@@ -16,7 +16,7 @@ jobs:
           import json, pathlib, re, subprocess
           root=pathlib.Path('.')
           spec=json.loads((root/'component.json').read_text())
-          assert spec['owner']=='flybrainwork'
+          assert spec['owner']=='flybrainlabs'
           assert spec['schema']=='flybrain-component-v1'
           for source in spec['workspaceFiles'].values():
               p=root/source

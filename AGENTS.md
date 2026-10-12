@@ -1,44 +1,58 @@
-# Flybrain development agreement
+# flybrainlabs development agreement
 
-## Ownership and automatic publication
+## Project identity and repository ownership
 
-On 2026-10-12 the owner moved future development to `flybrainwork` on GitHub.
-The former `mars99/flypow` repository is historical source only. Do not push
-commits, documentation, branches, tags, issues or pull requests to that account.
-Do not transfer or delete the old repository or merge its existing draft PR.
+On 2026-10-12 the owner selected `flybrainlabs` as the project name and GitHub
+account and authorized recreating and publishing the component repositories.
+Use `flybrainlabs` in current project titles, repository descriptions, product
+branding, documentation, release notes and new technical explanations.
 
-- Use the dedicated `github-flybrainwork` SSH identity, verify its login and pin
-  official GitHub host keys.
 - Maintained repositories: `web`, `node`, `miner`, `explorer`, `protocol`,
-  `contracts`, `sdk`, `infra`, `research`, and `docs`, all under `flybrainwork`.
-- After each completed and verified update, commit and push to the relevant
-  repository automatically. Keep release pins consistent, inspect remote changes
-  first and use normal fast forwards. No force pushes, empty commits or history
-  deletion. Report the actual remote commits and unsynchronized work accurately.
+  `contracts`, `sdk`, `infra`, `research`, and `docs`, all under `flybrainlabs`.
+- Use the dedicated `github-flybrainlabs` SSH identity and pinned official GitHub
+  host keys. Verify the SSH login and the CLI/API login separately; both must
+  identify `flybrainlabs` before account mutations or publication.
+- The former GitHub accounts are retired publication targets. Do not push to
+  `mars99` or `flybrainwork`, use their connectors, transfer/delete their
+  repositories, or merge the historical draft pull request.
+- Honor actual platform access errors. Report failed or incomplete publication
+  accurately; do not retry using a retired identity.
+- After each completed and verified update, commit and push automatically to its
+  owning repository. Inspect remote changes first, preserve them and use normal
+  fast forwards. No force pushes, empty commits or history deletion.
+- Keep verified dependency pins and the infrastructure release manifest current.
+  A release is available only after every pinned component and the containing
+  infrastructure commit have been verified on the authorized remote.
 - All new or updated documentation, commit messages, PR text, issues, release
-  notes, repository descriptions and newly introduced technical comments must be
-  in English. Product interfaces may remain bilingual.
-- Each repository contains actual component code, ownership, build/test commands
-  and dependency pins. Never claim unfinished features are operational.
-- Repository creation and publication are authorized. Formal payments, mainnet
-  issuance and production asset configuration require their actual identities,
-  funding and authorization; this migration does not activate them.
+  notes, repository descriptions and technical comments must be in English.
+  Product interfaces may remain bilingual; conversation may remain Chinese.
+- Each repository must contain actual component code, ownership metadata and
+  correct build/test instructions. Never describe unfinished features as live.
 
-## Retain state and protect secrets
+## Compatibility, retained state and secrets
 
+- Preserve scientific identity bytes, frozen vectors, signatures, addresses,
+  existing schema identifiers and persisted storage keys. Historical internal
+  identifiers are compatibility inputs, not the current project name. Migrate
+  them only under an explicit versioned compatibility plan.
 - Preserve model caches, OPFS results, browser profiles, signed identities,
-  databases/WAL, private archives and backups. Do not redownload or clear data
-  for a repository migration.
+  databases/WAL, private archives and backups. Never clear or redownload them
+  for a repository or branding migration.
 - Wallet secrets, SSH private keys, passwords, tokens, session credentials and
-  customer data stay outside repositories and public builds. Do not print them.
-- Scan staged files and publication bundles before pushing or deploying.
+  customer data stay outside repositories and public builds. Never print them.
+- Scan staged files and publication history before pushing or deploying.
 - Do not delegate to sub-agents unless explicitly requested by the owner or an
   applicable project instruction.
 
-## Current priorities
+## Product priorities and activation boundaries
 
-Preserve the deployed Explorer, three-stage mining UI and recoverable archives.
-Continue FLY Marketplace development with real complete-model computation,
+Preserve the deployed Explorer, three-stage mining workflow and recoverable
+archives. Continue the FLY Marketplace with real complete-model computation,
 immutable versions, finite authorization, checked atom amounts, durable
-settlement and cumulative historical entitlements. Production assets and
-payment routes remain unconfigured until supplied and verified.
+settlement and cumulative historical entitlements. Physical-device, independent
+operator and external scientific acceptance require their actual evidence.
+
+Repository publication does not activate mainnet, formal FLY issuance, production
+payments or unconfigured asset routes. Those operations retain their own identity,
+funding and authorization gates. The existing official website and the separately
+authorized X account are not changed by selecting the GitHub project name.

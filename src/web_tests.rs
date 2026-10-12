@@ -478,7 +478,7 @@ async fn native_pages_and_persistent_candidate_explorer() {
             "/whitepaper.md",
             "Verifiable computation and finite-budget settlement V2",
         ),
-        ("/whitepaper.md?lang=zh", "Flybrain: verifiable computation and finite settlement budgets V2"),
+        ("/whitepaper.md?lang=zh", "flybrainlabs: verifiable computation and finite settlement budgets V2"),
     ] {
         let (status, body) = call(&app, "GET", path, None, None).await;
         assert_eq!(status, StatusCode::OK);

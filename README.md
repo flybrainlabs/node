@@ -1,6 +1,6 @@
-# Flybrain node
+# flybrainlabs node
 
-Authority and service APIs for [Flybrain](https://flybrain.work/).
+Authority and service APIs for [flybrainlabs](https://flybrain.work/).
 
 ## Scope
 
@@ -16,7 +16,7 @@ Durable goal competition, commit/reveal processing, full replay coordination, pr
 
 Each imported file has one owning repository. `component.json` maps maintained
 files into the shared build layout. Dependencies are pinned by commit in the
-[infrastructure release manifest](https://github.com/flybrainwork/infra/blob/main/release-manifest.json).
+[infrastructure release manifest](https://github.com/flybrainlabs/infra/blob/main/release-manifest.json).
 
 ## Build and test
 
@@ -28,10 +28,10 @@ the compatible Solana/Agave build tools.
 First assemble the exact source revisions:
 
 ```sh
-git clone https://github.com/flybrainwork/infra.git flybrain/infra
-python3 flybrain/infra/tools/workspace.py checkout --repos flybrain
-python3 flybrain/infra/tools/workspace.py assemble --repos flybrain --output flybrain-workspace
-cd flybrain-workspace
+git clone https://github.com/flybrainlabs/infra.git flybrainlabs/infra
+python3 flybrainlabs/infra/tools/workspace.py checkout --repos flybrainlabs
+python3 flybrainlabs/infra/tools/workspace.py assemble --repos flybrainlabs --output flybrainlabs-workspace
+cd flybrainlabs-workspace
 npm ci
 ```
 
@@ -58,16 +58,16 @@ production funds and addresses are never substituted.
 - All maintained documentation, commit messages, issues, PRs and release notes
   are written in English. Product interfaces may remain bilingual.
 - Completed, verified updates are committed and pushed automatically to
-  `flybrainwork/node` using normal fast forwards.
+  `flybrainlabs/node` using normal fast forwards.
 - Keys, wallets, customer inputs, node databases, private artifacts, browser
   profiles and model caches stay outside Git and website exports.
 - Production payment and reward configuration remains disabled until its actual
   asset identities, authorities, funds and operating gates are satisfied.
 
 See [AGENTS.md](AGENTS.md), the
-[development guide](https://github.com/flybrainwork/docs/blob/main/docs/DEVELOPMENT.md),
-[architecture](https://github.com/flybrainwork/docs/blob/main/docs/ARCHITECTURE.md)
-and [status](https://github.com/flybrainwork/docs/blob/main/docs/STATUS.md).
+[development guide](https://github.com/flybrainlabs/docs/blob/main/docs/DEVELOPMENT.md),
+[architecture](https://github.com/flybrainlabs/docs/blob/main/docs/ARCHITECTURE.md)
+and [status](https://github.com/flybrainlabs/docs/blob/main/docs/STATUS.md).
 
 ## License and provenance
 

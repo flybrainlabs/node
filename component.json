@@ -1,7 +1,7 @@
 {
   "schema": "flybrain-component-v1",
   "repository": "node",
-  "owner": "flybrainwork",
+  "owner": "flybrainlabs",
   "workspaceFiles": {
     "Cargo.lock": "Cargo.lock",
     "Cargo.toml": "Cargo.toml",
@@ -51,5 +51,6 @@
     "tools/validate_settlement_config.mjs": "tools/validate_settlement_config.mjs",
     "tools/verifier_node.mjs": "tools/verifier_node.mjs",
     "web/data/market-catalog-v1.json": "web/data/market-catalog-v1.json"
-  }
+  },
+  "project": "flybrainlabs"
 }
