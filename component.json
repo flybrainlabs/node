@@ -12,6 +12,7 @@
     "config/network-schema.sql": "config/network-schema.sql",
     "config/product-v1.sql": "config/product-v1.sql",
     "config/target-mining-v2.sql": "config/target-mining-v2.sql",
+    "config/wallet-mining-v3.sql": "config/wallet-mining-v3.sql",
     "src/bin/economic_differential.rs": "src/bin/economic_differential.rs",
     "src/bin/target_authority.rs": "src/bin/target_authority.rs",
     "src/business_accounting.rs": "src/business_accounting.rs",
@@ -34,13 +35,16 @@
     "tests/product_cloud_pipeline.mjs": "tests/product_cloud_pipeline.mjs",
     "tests/public_product_api.py": "tests/public_product_api.py",
     "tests/public_target_competition_v2.mjs": "tests/public_target_competition_v2.mjs",
+    "tests/replay_faults_v3.mjs": "tests/replay_faults_v3.mjs",
     "tests/target_api_v2.mjs": "tests/target_api_v2.mjs",
     "tests/target_authority.rs": "tests/target_authority.rs",
     "tests/target_competition_v2.mjs": "tests/target_competition_v2.mjs",
+    "tests/wallet_login_v3.mjs": "tests/wallet_login_v3.mjs",
     "tools/archive_node.mjs": "tools/archive_node.mjs",
     "tools/build_official_node.mjs": "tools/build_official_node.mjs",
     "tools/candidate_verifier_v2.mjs": "tools/candidate_verifier_v2.mjs",
     "tools/economic_ingest_v2.mjs": "tools/economic_ingest_v2.mjs",
+    "tools/mining_relayer_v3.mjs": "tools/mining_relayer_v3.mjs",
     "tools/product_ops.mjs": "tools/product_ops.mjs",
     "tools/publish_product_plan.mjs": "tools/publish_product_plan.mjs",
     "tools/serve_research.py": "tools/serve_research.py",
@@ -50,7 +54,12 @@
     "tools/target_doctor.mjs": "tools/target_doctor.mjs",
     "tools/validate_settlement_config.mjs": "tools/validate_settlement_config.mjs",
     "tools/verifier_node.mjs": "tools/verifier_node.mjs",
-    "web/data/market-catalog-v1.json": "web/data/market-catalog-v1.json"
+    "tools/wallet_mining_v3.mjs": "tools/wallet_mining_v3.mjs",
+    "web/data/market-catalog-v1.json": "web/data/market-catalog-v1.json",
+    "tests/mining_transport_v3.mjs": "tests/mining_transport_v3.mjs",
+    "tests/wallet_devnet_v3.mjs": "tests/wallet_devnet_v3.mjs",
+    "tests/wallet_browser_v3_server.mjs": "tests/wallet_browser_v3_server.mjs",
+    "tools/certify_result_archive_v3.mjs": "tools/certify_result_archive_v3.mjs"
   },
   "project": "flybrainlabs"
 }

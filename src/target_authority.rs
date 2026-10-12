@@ -70,7 +70,7 @@ impl Authority {
         let key_path=private.join("authority-v2.key");let secret=if key_path.exists(){fs::read(&key_path).map_err(|e|e.to_string())?}else{let mut b=[0u8;32];getrandom::fill(&mut b).map_err(|e|e.to_string())?;let mut f=fs::OpenOptions::new().write(true).create_new(true).open(&key_path).map_err(|e|e.to_string())?;
             #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;f.set_permissions(fs::Permissions::from_mode(0o600)).map_err(|e|e.to_string())?;}f.write_all(&b).map_err(|e|e.to_string())?;f.sync_all().map_err(|e|e.to_string())?;b.to_vec()};
         let key=SigningKey::from_bytes(&secret.try_into().map_err(|_|"authority key length")?);let authority_id=p::hex(key.verifying_key().as_bytes());
-        let db=sql(Connection::open(data.join("target-v2.sqlite")))?;sql(db.busy_timeout(std::time::Duration::from_secs(10)))?;sql(db.execute_batch(include_str!("../config/target-mining-v2.sql")))?;
+        let db=sql(Connection::open(data.join("target-v2.sqlite")))?;sql(db.busy_timeout(std::time::Duration::from_secs(10)))?;sql(db.execute_batch(include_str!("../config/target-mining-v2.sql")))?;sql(db.execute_batch(include_str!("../config/wallet-mining-v3.sql")))?;
         let a=Arc::new(Self{data,config,authority_id,key,db:Mutex::new(db),wall_clock:AtomicBool::new(false),event_bus:tokio::sync::broadcast::channel(256).0});a.initialize()?;a.product_initialize()?;a.market_initialize()?;a.archive_housekeeping(now())?;Ok(a)
     }
     fn lock(&self)->Result<std::sync::MutexGuard<'_,Connection>>{self.db.lock().map_err(|_|"authority DB unavailable".into())}
@@ -218,6 +218,13 @@ impl Authority {
         if status!="OPEN"||at>deadline{return Err("DEADLINE: new claims closed".into());}if at<num(&round["pre"],"openedAt")?{return Err("CLOCK_ROLLBACK: authority time".into());}
         let cid=p::claim_id(&r.round_id,&r.public_key,&commitment)?;
         if let Some(v)=sql(tx.query_row("SELECT receipt_json FROM candidate_claims WHERE claim_id=?",[&cid],|x|x.get::<_,String>(0)).optional())?{let response=parse(v)?;Self::remember(&tx,r,&response)?;sql(tx.commit())?;return Ok(response);}
+        // A funded prospective goal requires the durable wallet/session intent
+        // already reconciled with its finalized on-chain registration. Historical
+        // scientific hashes and the ordinary no-payment path remain unchanged.
+        if let Some(enabled)=sql(tx.query_row("SELECT enabled FROM mining_v3_funded_goals WHERE goal_id=?",[text(&round["pre"],"goalId")?],|x|x.get::<_,bool>(0)).optional())?{
+            let accepted:bool=sql(tx.query_row("SELECT EXISTS(SELECT 1 FROM mining_v3_candidates c JOIN mining_v3_funded_goals g ON g.unit_address=c.unit_address WHERE c.claim_id=? AND c.round_id=? AND c.scientific_identity=? AND c.intent_registered=1 AND g.enabled=1)",params![cid,r.round_id,r.public_key],|x|x.get(0)))?;
+            if !enabled||!accepted{return Err("AUTHORIZATION: finalized finite wallet intent required for this funded goal".into());}
+        }
         let queue:u32=sql(tx.query_row("SELECT COUNT(*) FROM candidate_claims WHERE round_id=? AND status IN ('COMMITTED','REVEALED','VALID')",[&r.round_id],|x|x.get(0)))?;
         let own:u32=sql(tx.query_row("SELECT COUNT(*) FROM candidate_claims WHERE round_id=? AND miner_id=? AND status IN ('COMMITTED','REVEALED','VALID')",params![r.round_id,r.public_key],|x|x.get(0)))?;
         if queue as u64>=num(&round["pre"]["difficultyPolicy"],"maxQueue")?||own as u64>=num(&round["pre"]["difficultyPolicy"],"perIdentityClaims")?{return Err("BACKPRESSURE: claim queue quota".into());}
@@ -307,16 +314,19 @@ impl Authority {
     }
     pub fn lease(&self,r:&SignedRequest,at:u64)->Result<Value>{r.authenticate("verifier-lease")?;if !self.config.verifier_keys.contains(&r.public_key){return Err("AUTHORIZATION: verifier admission".into());}
         let mut db=self.lock()?;let tx=sql(db.transaction_with_behavior(TransactionBehavior::Immediate))?;let at=self.check_clock(&tx,at)?;
-        let model=&r.payload["modelReadiness"];let ready=if model.is_object(){let g:Value=parse(sql(tx.query_row("SELECT spec_json FROM goal_specs LIMIT 1",[],|r|r.get(0)))?)?;model["graphRoot"]==g["graphRoot"]&&model["modelDataRoot"]==g["modelDataRoot"]&&model["nativeBinaryReady"]==true}else{false};
-        sql(tx.execute("INSERT INTO verifier_presence(verifier_id,last_seen,phase,model_json) VALUES(?,?,?,?) ON CONFLICT(verifier_id) DO UPDATE SET last_seen=excluded.last_seen,phase=excluded.phase,model_json=excluded.model_json",params![r.public_key,at,if ready{"model-checked"}else{"connected-unreported-model"},if model.is_object(){model.to_string()}else{"{}".into()}]))?;
+        let model=&r.payload["modelReadiness"];
+        sql(tx.execute("INSERT INTO verifier_presence(verifier_id,last_seen,phase,model_json) VALUES(?,?,?,?) ON CONFLICT(verifier_id) DO UPDATE SET last_seen=excluded.last_seen,phase=CASE WHEN verifier_presence.model_json=excluded.model_json AND verifier_presence.phase='model-checked' THEN verifier_presence.phase ELSE excluded.phase END,model_json=excluded.model_json",params![r.public_key,at,"connected-unreported-model",if model.is_object(){model.to_string()}else{"{}".into()}]))?;
         // Lease retries query current fencing state; a new lease is never invented
         // from a stale saved reply. Expired workers cannot overwrite successors.
-        let selected:Option<(String,String,u64)>=sql(tx.query_row("SELECT j.job_id,j.claim_id,j.fencing_token FROM verification_jobs j JOIN candidate_claims c USING(claim_id) WHERE j.verifier_id=? AND c.status='REVEALED' AND c.verification_deadline>=? AND (j.status='PENDING' OR (j.status='LEASED' AND j.lease_until<?)) ORDER BY c.received_at,c.claim_sequence LIMIT 1",params![r.public_key,at,at],|x|Ok((x.get(0)?,x.get(1)?,x.get(2)?))).optional())?;
+        let selected:Option<(String,String,u64)>=sql(tx.query_row("SELECT j.job_id,j.claim_id,j.fencing_token FROM verification_jobs j JOIN candidate_claims c USING(claim_id) LEFT JOIN verification_job_retries retry USING(job_id) WHERE j.verifier_id=? AND c.status='REVEALED' AND c.verification_deadline>=? AND COALESCE(retry.not_before,0)<=? AND (j.status='PENDING' OR (j.status='LEASED' AND j.lease_until<?)) ORDER BY c.received_at,c.claim_sequence LIMIT 1",params![r.public_key,at,at,at],|x|Ok((x.get(0)?,x.get(1)?,x.get(2)?))).optional())?;
         let Some((job,cid,token))=selected else{sql(tx.commit())?;return self.signed("verification-lease",json!({"job":null,"serverTime":at}));};
         let concurrent:u64=sql(tx.query_row("SELECT COUNT(*) FROM verification_jobs WHERE status='LEASED' AND lease_until>=?",[at],|r|r.get(0)))?;
         if concurrent>=3 {sql(tx.commit())?;return self.signed("verification-lease",json!({"job":null,"serverTime":at,"reason":"concurrent-replay-capacity"}));}
         let (rid,deadline):(String,u64)=sql(tx.query_row("SELECT round_id,verification_deadline FROM candidate_claims WHERE claim_id=?",[&cid],|x|Ok((x.get(0)?,x.get(1)?))))?;
         let round=Self::round(&tx,&rid)?;let manifest=parse(sql(tx.query_row("SELECT manifest_json FROM candidate_reveals WHERE claim_id=?",[&cid],|x|x.get(0)))?)?;
+        let goal=&round["goal"];let ready=model["nativeBinaryReady"]==true&&model["graphRoot"]==goal["graphRoot"]&&model["modelDataRoot"]==goal["modelDataRoot"]&&model["parameterProfileHashes"].as_array().is_some_and(|v|v.contains(&goal["parameterProfileHash"]))&&model["evaluatorVersions"].as_array().is_some_and(|v|v.contains(&goal["evaluatorVersion"]));
+        if !ready{sql(tx.commit())?;return self.signed("verification-lease",json!({"job":null,"serverTime":at,"reason":"LOCAL_MODEL_ERROR","requiredGraphRoot":goal["graphRoot"],"requiredModelDataRoot":goal["modelDataRoot"],"requiredParameterProfileHash":goal["parameterProfileHash"],"requiredEvaluatorVersion":goal["evaluatorVersion"]}));}
+        sql(tx.execute("UPDATE verifier_presence SET phase='model-checked' WHERE verifier_id=?",[&r.public_key]))?;
         let mut q=sql(tx.prepare("SELECT upload_id,trial_index FROM candidate_artifacts WHERE claim_id=? AND status='SEALED' ORDER BY trial_index"))?;let artifacts=sql(q.query_map([&cid],|x|Ok(json!({"uploadId":x.get::<_,String>(0)?,"trialIndex":x.get::<_,u64>(1)?}))))?.collect::<rusqlite::Result<Vec<_>>>().map_err(|e|e.to_string())?;drop(q);
         let until=deadline.min(at+300);sql(tx.execute("UPDATE verification_jobs SET status='LEASED',fencing_token=fencing_token+1,lease_until=? WHERE job_id=?",params![until,job]))?;
         let result=self.signed("verification-lease",json!({"job":{"jobId":job,"claimId":cid,"roundId":rid,"fencingToken":token+1,"leaseUntil":until,"round":round,"manifest":manifest,"artifacts":artifacts},"serverTime":at}))?;sql(tx.commit())?;Ok(result)
@@ -324,6 +334,21 @@ impl Authority {
     pub fn heartbeat(&self,r:&SignedRequest,at:u64)->Result<Value>{r.authenticate("verifier-heartbeat")?;let job=text(&r.payload,"jobId")?;let token=num(&r.payload,"fencingToken")?;let mut db=self.lock()?;let tx=sql(db.transaction_with_behavior(TransactionBehavior::Immediate))?;let at=self.check_clock(&tx,at)?;
         let (owner,fence,until,deadline,status):(String,u64,u64,u64,String)=sql(tx.query_row("SELECT j.verifier_id,j.fencing_token,j.lease_until,c.verification_deadline,j.status FROM verification_jobs j JOIN candidate_claims c USING(claim_id) WHERE j.job_id=?",[&job],|x|Ok((x.get(0)?,x.get(1)?,x.get(2)?,x.get(3)?,x.get(4)?))))?;
         if owner!=r.public_key||token!=fence||until<at||deadline<at||status!="LEASED"{return Err("STALE_LEASE: fencing token/owner".into());}sql(tx.execute("UPDATE verifier_presence SET last_seen=? WHERE verifier_id=?",params![at,r.public_key]))?;let next=deadline.min(at+300);sql(tx.execute("UPDATE verification_jobs SET lease_until=? WHERE job_id=?",params![next,job]))?;sql(tx.commit())?;self.signed("verification-heartbeat",json!({"jobId":job,"fencingToken":token,"leaseUntil":next}))
+    }
+    pub fn verifier_fault(&self,r:&SignedRequest,at:u64)->Result<Value>{
+        r.authenticate("verifier-fault")?;if !self.config.verifier_keys.contains(&r.public_key){return Err("AUTHORIZATION: verifier fault".into());}
+        let job=text(&r.payload,"jobId")?;let fence=num(&r.payload,"fencingToken")?;let kind=text(&r.payload,"kind")?;let completed=num(&r.payload,"completeTrials")?;
+        if !["LOCAL_MODEL_ERROR","RETRYABLE_INFRA_ERROR"].contains(&kind.as_str())||r.payload["fullReplay"]!=false{return Err("INVALID_INPUT: infrastructure faults cannot attest scientific rejection".into());}
+        let mut db=self.lock()?;let tx=sql(db.transaction_with_behavior(TransactionBehavior::Immediate))?;let at=self.check_clock(&tx,at)?;if let Some(saved)=Self::cached(&tx,r)?{return Ok(saved);}
+        let (owner,token,until,rid,status):(String,u64,u64,String,String)=sql(tx.query_row("SELECT j.verifier_id,j.fencing_token,j.lease_until,c.round_id,j.status FROM verification_jobs j JOIN candidate_claims c USING(claim_id) WHERE j.job_id=?",[&job],|x|Ok((x.get(0)?,x.get(1)?,x.get(2)?,x.get(3)?,x.get(4)?))))?;
+        if owner!=r.public_key||fence!=token||until<at||rid!=r.round_id||status!="LEASED"{return Err("STALE_LEASE: fault identity/fence".into());}
+        let round=Self::round(&tx,&rid)?;if completed>round["pre"]["requiredBackgrounds"].as_u64().ok_or("INVALID_INPUT: backgrounds")?{return Err("INVALID_INPUT: completed replay count".into());}
+        sql(tx.execute("INSERT INTO verification_faults VALUES(?,?,?,?,?,?)",params![job,fence,r.public_key,kind,completed,at]))?;
+        let retry_at=at.checked_add(if kind=="LOCAL_MODEL_ERROR"{300}else{5}).ok_or("INVALID_INPUT: retry overflow")?;
+        sql(tx.execute("INSERT INTO verification_job_retries VALUES(?,?,?) ON CONFLICT(job_id) DO UPDATE SET not_before=excluded.not_before,kind=excluded.kind",params![job,retry_at,kind]))?;
+        sql(tx.execute("UPDATE verification_jobs SET status='PENDING',fencing_token=fencing_token+1,lease_until=0 WHERE job_id=?",[&job]))?;
+        sql(tx.execute("UPDATE verifier_presence SET phase=? WHERE verifier_id=?",params![kind,r.public_key]))?;
+        let result=self.signed("verification-fault-receipt",json!({"jobId":job,"kind":kind,"scientificVoteCreated":false,"retryAt":retry_at,"serverTime":at}))?;Self::remember(&tx,r,&result)?;sql(tx.commit())?;Ok(result)
     }
     pub fn verifier_artifact(&self,r:&SignedRequest,uid:&str,at:u64)->Result<Vec<u8>>{r.authenticate("verifier-artifact")?;if text(&r.payload,"uploadId")?!=uid{return Err("INVALID_INPUT: artifact binding".into());}root(uid)?;let job=text(&r.payload,"jobId")?;let token=num(&r.payload,"fencingToken")?;
         let db=self.lock()?;let (owner,fence,until,rid,status,sha):(String,u64,u64,String,String,String)=sql(db.query_row("SELECT j.verifier_id,j.fencing_token,j.lease_until,c.round_id,a.status,a.sha256 FROM verification_jobs j JOIN candidate_claims c USING(claim_id) JOIN candidate_artifacts a USING(claim_id) WHERE j.job_id=? AND a.upload_id=?",params![job,uid],|x|Ok((x.get(0)?,x.get(1)?,x.get(2)?,x.get(3)?,x.get(4)?,x.get(5)?))))?;
@@ -453,6 +478,7 @@ async fn chunk(State(a):State<Arc<Authority>>,Path((uid,index)):Path<(String,u64
 async fn upload_status(State(a):State<Arc<Authority>>,Path(uid):Path<String>,Json(r):Json<SignedRequest>)->std::result::Result<Json<Value>,ApiError>{blocking(a,move|a|a.upload_status(&r,&uid)).await.map(Json)}
 async fn seal(State(a):State<Arc<Authority>>,Path(uid):Path<String>,Json(r):Json<SignedRequest>)->std::result::Result<Json<Value>,ApiError>{blocking(a,move|a|a.seal(&r,&uid,now())).await.map(Json)}
 async fn lease(State(a):State<Arc<Authority>>,Json(r):Json<SignedRequest>)->std::result::Result<Json<Value>,ApiError>{blocking(a,move|a|a.lease(&r,now())).await.map(Json)}
+async fn verifier_fault(State(a):State<Arc<Authority>>,Json(r):Json<SignedRequest>)->std::result::Result<Json<Value>,ApiError>{blocking(a,move|a|a.verifier_fault(&r,now())).await.map(Json)}
 async fn heartbeat(State(a):State<Arc<Authority>>,Json(r):Json<SignedRequest>)->std::result::Result<Json<Value>,ApiError>{blocking(a,move|a|a.heartbeat(&r,now())).await.map(Json)}
 async fn vote(State(a):State<Arc<Authority>>,Json(r):Json<SignedRequest>)->std::result::Result<Json<Value>,ApiError>{blocking(a,move|a|a.vote(&r,now())).await.map(Json)}
 async fn artifact(State(a):State<Arc<Authority>>,Path(uid):Path<String>,Json(r):Json<SignedRequest>)->std::result::Result<Bytes,ApiError>{blocking(a,move|a|a.verifier_artifact(&r,&uid,now())).await.map(Bytes::from)}
@@ -505,6 +531,7 @@ pub fn router(a:Arc<Authority>)->Router{Router::new().merge(market::routes()).me
     .route("/api/target-mining/v2/artifacts/uploads/{uid}/status",post(upload_status))
     .route("/api/target-mining/v2/artifacts/uploads/{uid}/seal",post(seal))
     .route("/api/target-mining/v2/verifier-jobs/lease",post(lease))
+    .route("/api/target-mining/v2/verifier-jobs/fault",post(verifier_fault))
     .route("/api/target-mining/v2/verifier-jobs/heartbeat",post(heartbeat))
     .route("/api/target-mining/v2/verifier-artifacts/{uid}",post(artifact))
     .route("/api/target-mining/v2/verifier-votes",post(vote))

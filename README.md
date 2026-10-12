@@ -76,3 +76,15 @@ and third-party assets retain their own source attribution and licenses; this
 code license does not relicense MaleCNS data or third-party libraries. The
 import preserves numerical/identity fixtures and does not reinterpret existing
 scientific or financial records. See [NOTICE](NOTICE).
+
+## Wallet mining V3
+
+The finite Solana Devnet wallet-mining extension is described in the
+[execution and acceptance record](https://github.com/flybrainlabs/docs/blob/main/docs/WALLET_MINING_V3_EXECUTION.md)
+and [canonical Result layout](https://github.com/flybrainlabs/docs/blob/main/docs/WALLET_MINING_V3_RESULT_LAYOUT.md).
+Use the assembled workspace for cross-component imports and pinned release
+verification. Public receipts are in the contracts repository under
+`deploy/wallet-mining-v3/`; private signers, signed journals and full response
+archives remain outside source repositories. The two-unit acceptance budget is
+complete. Future paid work requires a new prospectively frozen finite plan.
+Actual extension-wallet and physical-device confirmation remain separate gates.

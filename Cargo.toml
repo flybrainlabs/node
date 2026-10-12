@@ -8,7 +8,7 @@ publish = false
 default-run = "flypow"
 
 [workspace]
-members = ["crates/receipt-v1", "crates/sim-core", "crates/task-catalog", "crates/campaign-core", "crates/target-protocol", "crates/economic-core", "crates/service-core", "programs/flypow-campaign", "programs/flypow-economy-v2"]
+members = ["crates/receipt-v1", "crates/sim-core", "crates/task-catalog", "crates/campaign-core", "crates/target-protocol", "crates/economic-core", "crates/service-core", "crates/mining-v3", "programs/flypow-campaign", "programs/flypow-economy-v2"]
 
 [dependencies]
 ed25519-dalek = "2.2"

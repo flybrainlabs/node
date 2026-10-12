@@ -501,6 +501,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "059c31d7d36c43fe39d89e55711858b4da8be7eb6dabac23c7289b1a19489406"
 
 [[package]]
+name = "flybrainlabs-mining-v3"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+]
+
+[[package]]
 name = "flypow"
 version = "0.1.0"
 dependencies = [
@@ -560,6 +567,7 @@ name = "flypow-economy-v2-program"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "flybrainlabs-mining-v3",
  "flypow-economic-core",
  "solana-program",
  "solana-system-interface",

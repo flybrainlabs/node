@@ -36,3 +36,11 @@ CREATE TABLE IF NOT EXISTS goal_difficulty_families (goal_id TEXT PRIMARY KEY, f
 CREATE TABLE IF NOT EXISTS difficulty_family_controllers (campaign_id TEXT NOT NULL, family_id TEXT NOT NULL, controller_json TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(campaign_id,family_id));
 CREATE TABLE IF NOT EXISTS goal_plan_revisions (campaign_id TEXT NOT NULL,revision INTEGER NOT NULL,plan_hash TEXT NOT NULL UNIQUE,descriptor_json TEXT NOT NULL,request_json TEXT NOT NULL,published_at INTEGER NOT NULL,PRIMARY KEY(campaign_id,revision));
 CREATE TABLE IF NOT EXISTS verifier_presence (verifier_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL,phase TEXT NOT NULL,model_json TEXT NOT NULL DEFAULT '{}');
+CREATE TABLE IF NOT EXISTS verification_faults (
+ job_id TEXT NOT NULL, fencing_token INTEGER NOT NULL, verifier_id TEXT NOT NULL,
+ kind TEXT NOT NULL, complete_trials INTEGER NOT NULL, reported_at INTEGER NOT NULL,
+ PRIMARY KEY(job_id,fencing_token)
+);
+CREATE TABLE IF NOT EXISTS verification_job_retries (
+ job_id TEXT PRIMARY KEY, not_before INTEGER NOT NULL, kind TEXT NOT NULL
+);
