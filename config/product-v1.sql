@@ -1,0 +1,32 @@
+-- Additive, repeatable migration. No legacy row, identity or archive is modified.
+CREATE TABLE IF NOT EXISTS product_migrations(version INTEGER PRIMARY KEY,at INTEGER NOT NULL);
+INSERT OR IGNORE INTO product_migrations VALUES(1,unixepoch());
+CREATE TABLE IF NOT EXISTS science_simulations(id TEXT PRIMARY KEY,descriptor TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS science_readouts(id TEXT PRIMARY KEY,descriptor TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS science_contributions(id TEXT PRIMARY KEY,actor TEXT NOT NULL,kind TEXT NOT NULL,task_id TEXT NOT NULL,readout_id TEXT NOT NULL,authorization TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(actor,kind,task_id,readout_id,authorization));
+CREATE TABLE IF NOT EXISTS science_acceptances(id TEXT PRIMARY KEY,contribution_id TEXT NOT NULL,policy TEXT NOT NULL,judgement TEXT NOT NULL,evidence TEXT NOT NULL,issued_by TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS public_results(sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,task_id TEXT NOT NULL,model_root TEXT NOT NULL,input_body TEXT NOT NULL,result_type TEXT NOT NULL,evidence_level TEXT NOT NULL,summary TEXT NOT NULL,publication_policy TEXT NOT NULL,published_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS public_result_files(result_id TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,bytes INTEGER NOT NULL,mime TEXT NOT NULL,PRIMARY KEY(result_id,name));
+CREATE TABLE IF NOT EXISTS product_audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,actor TEXT NOT NULL,payload TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS service_sessions(token_hash TEXT PRIMARY KEY,source_hash TEXT NOT NULL,expires INTEGER NOT NULL,used INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS service_limits(source_hash TEXT NOT NULL,bucket INTEGER NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(source_hash,bucket));
+CREATE TABLE IF NOT EXISTS service_requests(id TEXT PRIMARY KEY,request_id TEXT NOT NULL UNIQUE,request_hash TEXT NOT NULL,access_hash TEXT NOT NULL,fields TEXT NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS service_events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL,actor TEXT NOT NULL,status TEXT NOT NULL,basis TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS wallet_bindings(id TEXT PRIMARY KEY,miner TEXT NOT NULL,wallet TEXT NOT NULL,chain TEXT NOT NULL,policy TEXT NOT NULL,proof TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS economic_events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,event_id TEXT NOT NULL UNIQUE,business_key TEXT NOT NULL,asset TEXT NOT NULL,kind TEXT NOT NULL,payload TEXT NOT NULL,prior_root TEXT NOT NULL,root TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS economic_books(asset TEXT PRIMARY KEY,state TEXT NOT NULL,root TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS economic_outbox(event_id TEXT PRIMARY KEY,payload TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending');
+CREATE TABLE IF NOT EXISTS economic_quotes(id TEXT PRIMARY KEY,request_id TEXT NOT NULL,asset TEXT NOT NULL,amount_atoms TEXT NOT NULL,expires INTEGER NOT NULL,terms TEXT NOT NULL,confirmed_by TEXT,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS operating_costs(id TEXT PRIMARY KEY,task_id TEXT,stage_id TEXT,asset TEXT NOT NULL,amount_atoms TEXT NOT NULL,kind TEXT NOT NULL,source TEXT NOT NULL,confirmed INTEGER NOT NULL,created_at INTEGER NOT NULL);
+CREATE TRIGGER IF NOT EXISTS immutable_simulation BEFORE UPDATE ON science_simulations BEGIN SELECT RAISE(ABORT,'immutable science'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_readout BEFORE UPDATE ON science_readouts BEGIN SELECT RAISE(ABORT,'immutable science'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_contribution BEFORE UPDATE ON science_contributions BEGIN SELECT RAISE(ABORT,'immutable contribution'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_acceptance BEFORE UPDATE ON science_acceptances BEGIN SELECT RAISE(ABORT,'immutable acceptance'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_economic_event BEFORE UPDATE ON economic_events BEGIN SELECT RAISE(ABORT,'append-only economic events'); END;
+CREATE TRIGGER IF NOT EXISTS undeletable_economic_event BEFORE DELETE ON economic_events BEGIN SELECT RAISE(ABORT,'compensating events required'); END;
+
+CREATE TABLE IF NOT EXISTS service_task_bindings(request_id TEXT PRIMARY KEY,asset TEXT NOT NULL,stage_id TEXT NOT NULL,slot_id TEXT NOT NULL,goal_id TEXT NOT NULL,quote_id TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS service_deliveries(request_id TEXT PRIMARY KEY,readout_id TEXT NOT NULL,contribution_id TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS operating_entries(id TEXT PRIMARY KEY,business_id TEXT NOT NULL UNIQUE,task_id TEXT,stage_id TEXT,asset TEXT NOT NULL,amount_atoms TEXT NOT NULL,kind TEXT NOT NULL,source TEXT NOT NULL,actor TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TRIGGER IF NOT EXISTS immutable_operating_entry BEFORE UPDATE ON operating_entries BEGIN SELECT RAISE(ABORT,'append-only operating entries'); END;
+CREATE TRIGGER IF NOT EXISTS undeletable_operating_entry BEFORE DELETE ON operating_entries BEGIN SELECT RAISE(ABORT,'compensating entries required'); END;

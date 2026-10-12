@@ -1,0 +1,36 @@
+name: Source policy
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check component ownership and English documentation
+        run: |
+          python3 - <<'PYCODE'
+          import json, pathlib, re, subprocess
+          root=pathlib.Path('.')
+          spec=json.loads((root/'component.json').read_text())
+          assert spec['owner']=='flybrainwork'
+          assert spec['schema']=='flybrain-component-v1'
+          for source in spec['workspaceFiles'].values():
+              p=root/source
+              assert p.is_file() and not p.is_symlink(), source
+              assert '..' not in p.parts and '.git' not in p.parts, source
+          tracked=subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
+          for name in filter(None,tracked):
+              p=root/name
+              data=p.read_bytes()
+              if p.suffix=='.md':
+                  assert not re.search('[\u3400-\u9fff]',data.decode('utf-8')), name
+              assert not re.search(rb'-----BEGIN (?:OPENSSH |RSA |EC |DSA |ENCRYPTED )?PRIVATE KEY-----',data), name
+              assert not re.search(rb'\bgh[pousr]_[A-Za-z0-9]{30,}\b',data), name
+          message=subprocess.check_output(['git','log','-1','--format=%B']).decode()
+          assert not re.search('[\u3400-\u9fff]',message), 'Commit messages must be English'
+          print('Component sources, documentation and commit language passed.')
+          PYCODE

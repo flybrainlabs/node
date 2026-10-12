@@ -1,0 +1,1652 @@
+{
+  "schema": "flybrain-market-catalog-v1",
+  "schemaVersion": 1,
+  "sourceDocumentSha256": "c0958e931c0f2284593e8cda7095e0a1c5ed7459da1f3da73af85ac0167ada02",
+  "projects": [
+    {
+      "schemaVersion": 1,
+      "code": "T01",
+      "slug": "response-query",
+      "name": {
+        "zh": "冻结脑模型刺激响应查询与近似预测",
+        "en": "Frozen brain response queries and prediction"
+      },
+      "category": "neural",
+      "brainMode": "male_cns_frozen",
+      "artifactKinds": [
+        "simulator_service",
+        "search_service",
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "计算神经科学实验室、连接组研究工具开发者、科研计算平台；减少重复配置和运行相同模型的时间，快速查询特定刺激在指定模型中的响应。没有已确认客户。",
+          "input": "不可变模型版本、一个已支持刺激细胞或明确刺激集合、波形/电流/时间、背景种子或预定义种子集合、初始状态、读出细胞/群体、时间窗。当前 `model-units` 不标成真实 pA 或电生理电流。",
+          "output": "基线与刺激响应摘要、计数变化、时延、受支持范围内选择性、模型/输入/读出身份；近似模式附校准误差与域外标记，精确模式附结果根和复算凭证。",
+          "brainRole": "`brainMode=male_cns_frozen`。现有 MaleCNS 图和固定 LIF 参数充当被查询的计算对象或 surrogate 教师，不宣称通过查询改变脑权重。",
+          "method": "先精确缓存；有真实较大输入域需求后，用唯一响应样本训练条件回归器或响应 surrogate。`artifactKind=simulator_service` 或 `learned_model`；后者 `modelKind=response_surrogate`。两种结果不混标。",
+          "minerWork": "执行分配的有限模型/刺激/种子仿真、输出完整事件及摘要；或从已有响应提取指定固定特征。完整事件可被复用，缓存命中不重领“新样本”报酬。",
+          "dataLicense": "当前 MaleCNS 官方 CC-BY 数据、项目自行生成且具有明确分发授权的仿真结果；保留数据与代码不同许可证。原论文数据及权重若使用须独立审查。[S01][S02]",
+          "baseline": "原生冻结仿真；精确查表与缓存；简单插值/小型 MLP。当前四个刺激细胞 × 六个电流 × 三个起始时间 × 一种持续时间为 72 个组合，种子另计。不得为训练 surrogate 强行制造超过客户所需的计算。",
+          "releaseTargets": "精确服务对冻结域全部输入和约定种子给出一致结果；surrogate 在独立 SimulationId 的盲测上，计数 NMAE ≤0.05（分母预先按训练集尺度固定），关键方向符号错误率 ≤1%；给定支持域下 p95 服务计算延迟至少比完整仿真快 5 倍，并包含维护/存储成本比较。若查表更优，发布查表服务并明确其类型。对仿真符合不等于生物验证。",
+          "billing": "`response_query`，一个固定大小响应查询；`exact_trial`，一个模型×刺激×种子×固定步长上限的精确试验。扩域或多种子用预报价的整数单位，不按后台重试重复收费。",
+          "evidence": "研究有全脑 LIF 的具体感觉运动预测与实验验证先例；该论文不是本项目 MaleCNS 参数验证。FlyPoW 现有冻结仿真和评分快径，尚无本任务新 surrogate 的独立发布证据。[S02]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 1,
+      "defaultMiningEligible": true,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "existing_frozen_model",
+        "baselineCommand": "tools/market_baseline.py --project T01 --manifest DATASET.json --output REPORT.json",
+        "executors": [
+          "frozen-lif-pair-v1",
+          "fixed-response-feature-statistics-v1"
+        ],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "modelVersionId",
+          "input",
+          "seedHex"
+        ],
+        "properties": {
+          "modelVersionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "stimulatedBodyId",
+              "startStep",
+              "endStep",
+              "current"
+            ],
+            "properties": {
+              "stimulatedBodyId": {
+                "enum": [
+                  "16789",
+                  "16961",
+                  "18708",
+                  "87973"
+                ]
+              },
+              "startStep": {
+                "enum": [
+                  0,
+                  32,
+                  96
+                ]
+              },
+              "endStep": {
+                "enum": [
+                  1,
+                  33,
+                  97
+                ]
+              },
+              "current": {
+                "enum": [
+                  25,
+                  50,
+                  75,
+                  100,
+                  125,
+                  150
+                ]
+              }
+            }
+          },
+          "seedHex": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "response-query",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T02",
+      "slug": "target-search",
+      "name": {
+        "zh": "目标约束刺激方案搜索",
+        "en": "Constrained stimulus search"
+      },
+      "category": "neural",
+      "brainMode": "male_cns_frozen",
+      "artifactKinds": [
+        "simulator_service",
+        "search_service",
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "设计模型内刺激实验的研究人员、神经计算平台；寻找在规定刺激成本下达到目标群体响应、限制指定非目标响应的候选方案。",
+          "input": "版本化目标集合/非目标集合、时间窗、期望响应下界、刺激成本上限、允许的刺激域、种子与稳健性要求。",
+          "output": "排序候选刺激、各项约束与成本、完整仿真验证结果；未找到必须区分“预算内未找到”与“有限域穷举证明不存在”。局部 32 个非目标细胞约束不能叫全脑选择性。",
+          "brainRole": "`male_cns_frozen`；目标是对同一脑模型进行输入设计，不是训练该脑学会认知任务。",
+          "method": "72 输入先穷举；较大合法域采用主动采样/代理排序/候选搜索策略，最终由冻结仿真核验。`search_service` 可以无需权重；真正学习后 `learned_model` 的 `modelKind=search_policy`，绑定独立 verifier。",
+          "minerWork": "对授权候选执行仿真，或对已知全事件做读出重评分；候选发现和验证任务分账。算法调参从同一预算和初始数据开始，不奖励随意扩大随机搜索。",
+          "dataLicense": "复用 T01 数据及许可；目标规范由项目/赞助方提供，公开前具有授权。客户未公开目标和返回方案留在受控执行域。",
+          "baseline": "有限域穷举、随机搜索、简单贝叶斯/顺序优化、T01 缓存扫描。与 T01 共用响应存储和仿真身份，但训练目标和收费产物不同。",
+          "releaseTargets": "有限小域的全域模式须 100% 对齐穷举可行性与最优成本；扩域在预先构建的可行测试问题上成功率 ≥95%，返回的所有“已验证可行”方案均通过原生 verifier；在存在 oracle 的子集上成本距最优 ≤5%，并在同预算下不弱于最强适用搜索基线。core.target-search 的 8 候选报价只覆盖其授权候选集，不能据此声称当前 72 组合全域最优或全域无解；此类全域结论必须有全部组合覆盖或有效缓存证据。分别验收预算内搜索和全域穷举模式。若只验证样本种子，必须明确不保证所有随机背景。",
+          "billing": "`bounded_search_job`，一个目标、固定最大候选/种子预算和候选返回上限的搜索包；额外精确试验另行预报价。成功交付可以是完整的预算内搜索报告，不能承诺每次一定有可行解。",
+          "evidence": "当前目标搜索原语可衔接；本项目尚未证明学习型搜索器优于小域穷举。论文仅支持模型可形成可检验刺激假设，不证明本系统找到真实生物有效方案。[S02]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 2,
+      "defaultMiningEligible": true,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "existing_frozen_model",
+        "baselineCommand": "tools/market_baseline.py --project T02 --manifest DATASET.json --output REPORT.json",
+        "executors": [
+          "frozen-lif-pair-v1",
+          "fixed-response-feature-statistics-v1"
+        ],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "candidateInputs",
+          "goalId",
+          "seedHex"
+        ],
+        "properties": {
+          "candidateInputs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "type": "object"
+            }
+          },
+          "goalId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "seedHex": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{16}$"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "target-search",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T03",
+      "slug": "intervention-sensitivity",
+      "name": {
+        "zh": "神经回路干预敏感性与消融排序",
+        "en": "Circuit intervention sensitivity"
+      },
+      "category": "neural",
+      "brainMode": "male_cns_parameterized",
+      "artifactKinds": [
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "做神经回路筛选、实验优先级排序的计算实验室；比较多个候选细胞或连接干预对模型内响应的影响，选择值得进一步实验验证的对象。",
+          "input": "基准模型、固定刺激/种子、候选细胞或细胞组、明确干预类型（如规定的沉默、增益变化）、读出与最大干预数。",
+          "output": "每个干预的成对响应差异、误差/背景稳健性、敏感性排名、基线与干预结果根。不使用“真实因果机制已证实”描述模型内消融。",
+          "brainRole": "`male_cns_parameterized`；改动必须产生新的干预配置/模型身份，并说明是否改变状态更新规则。当前刺激执行器不等于已支持任意消融，需新版本实现。",
+          "method": "先成对完整仿真形成干预数据；再学习扰动响应 surrogate 或排序读出层。`modelKind=perturbation_surrogate`。零干预等价检查和逐项干预参考实现先于训练。",
+          "minerWork": "分配基线/干预对及相同背景种子，计算或复验差异；可提取已有基线，但不能把同一基线重复记成新成果。不得偷偷换小子图后称完整 MaleCNS 干预。",
+          "dataLicense": "T01 的公开连接组和仿真数据；之后匹配细胞类型的公开实验或合作实验数据须有单独来源、映射、许可与测量误差信息。",
+          "baseline": "完整成对仿真；连接度/路径等廉价图指标；线性敏感性近似；简单回归模型。图指标必须按同一候选集合比较。",
+          "releaseTargets": "干预参考执行器完整重放一致、零干预差异为零；未见干预对象上排名 Spearman ≥0.9，top-10 overlap ≥0.8；实际报告中的优先候选重新完整核验。跨种子稳定性独立报告。没有真实实验匹配时仅可发布为“模型内干预预测”。",
+          "billing": "`intervention_report`，例如上限 32 个干预×4 个种子、固定刺激和读出范围的一份报告；超限拆成明确报价单位。",
+          "evidence": "已有 LIF 与实验干预研究提供方法方向；FlyPoW 新干预执行器、数据集、训练模型均待实现及验证。优先级排在 T01/T02 后。[S02]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 3,
+      "defaultMiningEligible": false,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "awaiting_adapter_and_licensed_data",
+        "baselineCommand": "tools/market_baseline.py --project T03 --manifest DATASET.json --output REPORT.json",
+        "executors": [],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "candidateIndices",
+          "edges",
+          "intervention",
+          "parametersVersion"
+        ],
+        "properties": {
+          "candidateIndices": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 165121
+            }
+          },
+          "edges": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 3
+            }
+          },
+          "intervention": {
+            "enum": [
+              "silence",
+              "gain"
+            ]
+          },
+          "parametersVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "intervention-sensitivity",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T04",
+      "slug": "visual-motion",
+      "name": {
+        "zh": "低分辨率视觉运动/光流估计",
+        "en": "Low-resolution visual motion"
+      },
+      "category": "vision",
+      "brainMode": "fly_visual_adapted",
+      "artifactKinds": [
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "低功耗视觉模组、机器人感知和教学仿真团队；从低分辨率图像估计方向和速度，降低特定场景感知成本。",
+          "input": "已知时间间隔的灰度帧序列、分辨率、视场/相机标定；首版固定如 128×128、≤30 fps，并明确最大运动范围。",
+          "output": "稀疏或低分辨率二维流场、全局运动摘要、置信度与失效标记。像素/帧、角度/秒和米/秒不能混用；没有深度标定不输出真实世界平移速度。",
+          "brainRole": "`fly_visual_adapted`；借鉴果蝇方向选择性视觉回路或适配 Flyvis。Flyvis 的视觉连接、动力学和 checkpoint 不是当前 MaleCNS 固定 LIF，必须登记另一基础模型和来源。",
+          "method": "程序化场景提供准确运动标签；先训练编码器+固定视觉回路读出，再有限调整回路参数。`modelKind=motion_estimator`，保留解剖连接对照。使用公开预训练权重前单独查许可证，不把代码 MIT 推导成所有权重/训练素材 MIT。",
+          "minerWork": "生成授权几何运动刺激；执行固定模型的低分辨率特征提取；计算读出统计量；评估预定参数候选。主训练可由协调器完成。像素输入和渲染器版本均哈希，GPU 浮点误差按数值规范处理。",
+          "dataLicense": "优先项目自有几何/纹理的程序化合成数据，并显式授予商业训练与浏览器分发权；合作采集相机视频需同意。Flyvis 软件 MIT 已核对，附属连接资料、下载权重与原始场景需逐资产审查。[S03][S04]",
+          "baseline": "Lucas–Kanade、Farnebäck、与预算匹配的小型 CNN/现代光流网络；恒零/全局平移只作 sanity check，不能作为唯一对手。",
+          "releaseTargets": "固定 128×128 支持域、未见纹理与运动轨迹上 EPE ≤1 像素/帧；遮挡、亮度变化、旋转等分层报告；在质量不降低超过预设容差时成本或 p95 延迟至少优于适用最佳基线 2 倍，或在同成本下误差降低 ≥10%。声称真实摄像机适用前增加独立实拍测试；合成测试只发布 synthetic-domain 标签。",
+          "billing": "`vision_frame_pair_100`，至多 100 个有序帧对，每帧至多 128×128；对应 motion.batch。按报价定义的整批成功交付收费，空批拒绝；更大批次先拆成整数计费块，不能超出模型实际支持范围。",
+          "evidence": "Flyvis 有明确视觉运动任务优化与神经活动对照论文；本项目尚未适配、训练或复现该成绩。[S03]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 4,
+      "defaultMiningEligible": false,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "awaiting_adapter_and_licensed_data",
+        "baselineCommand": "tools/market_baseline.py --project T04 --manifest DATASET.json --output REPORT.json",
+        "executors": [],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "frames",
+          "frameIntervalSeconds"
+        ],
+        "properties": {
+          "frames": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "array",
+                "maxItems": 128,
+                "items": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              }
+            }
+          },
+          "frameIntervalSeconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "visual-motion",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T05",
+      "slug": "looming-detection",
+      "name": {
+        "zh": "视觉接近与碰撞趋势检测",
+        "en": "Visual looming detection"
+      },
+      "category": "vision",
+      "brainMode": "fly_looming_inspired",
+      "artifactKinds": [
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "机器人感知供应商、设备视频分析与仿真团队；从视觉扩张判断物体是否接近，生成风险特征供其他系统使用。",
+          "input": "固定相机规范的视频序列、时间戳与可选几何标定。",
+          "output": "接近概率、扩张中心、趋势等级；只有经过标定且满足几何假设才输出接触时间估计及范围。输出不直接变成制动/电机控制命令。",
+          "brainRole": "`fly_looming_inspired`；借鉴果蝇 T4/T5 与 LPLC2 对径向外扩和相反运动抑制的计算结构。该生物依据针对果蝇，不引用蝗虫 LGMD 冒充果蝇全脑结果。[S05]",
+          "method": "训练方向运动特征后的接近分类与可选 TTC 回归；包含旋转、整体亮度变化、收缩、横向经过等困难负样本。`modelKind=looming_detector`。",
+          "minerWork": "生成参数化外扩/旋转/收缩序列和真实标签，评估固定候选，提供受控压力测试；训练数据与最终隐藏场景不同。",
+          "dataLicense": "自有程序化形状/场景、授权实拍接近序列。论文用来支持结构选择，不自动获得论文视频再分发权。",
+          "baseline": "光流散度阈值、简单 TTC 几何估计、小型 CNN/时序网络；也比较去掉 LPLC2 式抑制的模型。",
+          "releaseTargets": "≥1,000 个独立未见场景，接近召回 ≥95% 时误报 ≤1% 场景；在具有真值且标定有效的样本上 TTC 相对中位误差 ≤10%；明确速度/视角/尺寸域。报告每类混淆刺激表现，不能只测黑圆盘外扩。按场景而非逐帧计算置信区间。真实设备用于辅助感知前有额外真实录制对照。",
+          "billing": "`looming_frame_1k`，1,000 个输入帧、固定帧率/分辨率和状态协议；不按警报次数计费。",
+          "evidence": "LPLC2 机制有生物实验支持；FlyPoW 的工程检测器和商业阈值未实证。[S05]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 5,
+      "defaultMiningEligible": false,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "awaiting_adapter_and_licensed_data",
+        "baselineCommand": "tools/market_baseline.py --project T05 --manifest DATASET.json --output REPORT.json",
+        "executors": [],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "frames",
+          "frameIntervalSeconds"
+        ],
+        "properties": {
+          "frames": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 100,
+            "items": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "array",
+                "maxItems": 128,
+                "items": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              }
+            }
+          },
+          "frameIntervalSeconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "looming-detection",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T06",
+      "slug": "heading-estimation",
+      "name": {
+        "zh": "视觉与惯性融合航向估计",
+        "en": "Visual and inertial heading"
+      },
+      "category": "heading",
+      "brainMode": "fly_compass_inspired",
+      "artifactKinds": [
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "室内机器人、全景视觉、教育机器人和仿真团队；利用视觉地标和转动信息维护相对航向，缓解短时视觉缺失。",
+          "input": "低分辨率视觉地标/全景特征、陀螺仪角速度与时间戳、起始相对航向、传感器标定。",
+          "output": "相对偏航角、角速度、置信区间/失锁状态；首版仅 yaw/azimuth，不声称 6DoF 姿态、绝对地理定位或惯性导航替代品。",
+          "brainRole": "`fly_compass_inspired`；借鉴中央复合体环形表征、地标校正与角积分。MaleCNS 的对应类型映射若使用必须审查，普通环吸引子实现就按启发模型标注。[S06]",
+          "method": "监督回归/状态估计，训练视觉编码、融合增益与读出；可固定环结构并学习少量参数。`modelKind=heading_estimator`。时序模型需明确连续状态、重置、预热和时钟漂移处理。",
+          "minerWork": "生成带真实 yaw 的授权场景与 IMU 噪声轨迹；运行融合候选、计算固定读出统计量、公开鲁棒性评估。",
+          "dataLicense": "自有程序化全景/地标 + 明确噪声模型，及自采具有商用/分发授权的转台或机器人传感器记录。软件 license 不自动授权外部环境纹理。",
+          "baseline": "纯积分、互补滤波、EKF、匹配预算的 GRU/视觉惯性估计器；真实脑连接、通用环结构与打乱环结构分别对照。",
+          "releaseTargets": "≥100 条独立未见轨迹，地标可用时圆周 MAE ≤5°；规定 5 秒视觉缺失期间附加漂移 ≤10°，恢复地标后 ≤1 秒重新稳定；相同 IMU 和视觉信息下相对最强基线至少出现预注册的质量或成本优势。数据不满足时只能显示研究预览。",
+          "billing": "`heading_step_1k`，至多 1,000 个合规、带时间戳的输入时间步，对应 heading.batch。固定视觉线索/IMU 特征维度、重采样规则、最大间隔、状态预热与重置；每批成功交付按预报价结算，不按输出修正次数收费。",
+          "evidence": "果蝇椭球体地标与自运动结合有实验证据；本项目的工程融合与跨硬件迁移未实证。[S06]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 6,
+      "defaultMiningEligible": false,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "awaiting_adapter_and_licensed_data",
+        "baselineCommand": "tools/market_baseline.py --project T06 --manifest DATASET.json --output REPORT.json",
+        "executors": [],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "samples",
+          "initialDegrees"
+        ],
+        "properties": {
+          "samples": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "required": [
+                "timeSeconds",
+                "gyroDegreesPerSecond"
+              ],
+              "properties": {
+                "timeSeconds": {
+                  "type": "number"
+                },
+                "gyroDegreesPerSecond": {
+                  "type": "number"
+                },
+                "landmarkDegrees": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "initialDegrees": {
+            "type": "number"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "heading-estimation",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T07",
+      "slug": "odor-classification",
+      "name": {
+        "zh": "电子鼻气味指纹识别",
+        "en": "Electronic-nose odor classification"
+      },
+      "category": "odor",
+      "brainMode": "fly_olfactory_inspired",
+      "artifactKinds": [
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "电子鼻模组与环境/样品分析设备开发者；在已校准传感器和已知样品范围内区分气味指纹，处理温湿度和漂移影响。第一版不承担有毒气体安全报警或食品安全结论。",
+          "input": "传感器型号/标定版本、MOX 阵列时间序列、温度、湿度、基线记录；首版绑定一种具体传感器阵列与有限类别集合。",
+          "output": "限定类别的概率、unknown/域外判断、质量与漂移提示。未知混合物不硬分成最接近的已知类别，不输出未经训练的化学组分浓度。",
+          "brainRole": "`fly_olfactory_inspired`；借鉴嗅觉归一化、稀疏扩展、竞争性活动与读出。MOX 电阻到神经特征的编码是工程设计，不是已证实的果蝇受体等价关系。",
+          "method": "标准化/漂移校正+稀疏扩展+监督读出；较长时序可加 reservoir，统一训练 checkpoint。`modelKind=odor_classifier`，不能将纯特征搜索写成全脑训练。",
+          "minerWork": "仅处理获准公开的传感器分片，计算固定特征与读出统计量，运行漂移候选；客户未公开配方和私有样品序列留在受控训练域。",
+          "dataLicense": "UCI 362 Gas sensors for home activity monitoring 官方页为 CC BY 4.0，100 个独立记录，主要 wine/banana/background，可用于受限原型；补充商业相关的自采授权数据。UCI 224 和 322 官方页正文禁止商业、页尾 CC BY 4.0，存在明确冲突，状态 `license_conflict`，禁止默认商用训练/浏览器分发，需权利方澄清。270 为相关版本，未完成消歧，不默认通过。[S07][S08][S09]",
+          "baseline": "标准化+SVM、梯度提升树、小型 GRU/TCN、普通随机稀疏扩展；不能仅与多数类对照。",
+          "releaseTargets": "以整次气味诱导/日期/设备批次分割；商业版本应有≥200 次独立曝光且每类≥30 次、至少一个未见日期/硬件测试组；宏 F1 ≥0.90，预定义 unknown 集 AUROC ≥0.90。若数据量仅有 UCI 362 的 100 次诱导，只能完成原型分组验证，不把 919,438 行当独立样本达标。相同成本下至少比适用最强基线提升 3 个百分点，或在质量容差内显著降低成本。",
+          "billing": "`odor_window_100`，至多 100 个有效窗口，对应 odor.batch。FlyOdor-3 首轮规格可限定每窗至多 5 分钟、8 个 MOX 通道加温湿度；1 Hz 是拟议统一重采样率，不是对所有源数据原采样率的断言。具体阵列、单位、窗口与缺失处理在模型版本中固定，不按输出类别数收费。",
+          "evidence": "果蝇稀疏嗅觉编码有相关算法依据，电子鼻本身有公开传感器数据；本项目把两者组合后是否优于传统分类器未实证。[S10]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 7,
+      "defaultMiningEligible": false,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "awaiting_adapter_and_licensed_data",
+        "baselineCommand": "tools/market_baseline.py --project T07 --manifest DATASET.json --output REPORT.json",
+        "executors": [],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "samples",
+          "recordId",
+          "deviceId",
+          "label",
+          "licenseId"
+        ],
+        "properties": {
+          "samples": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 10000,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 10,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "recordId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "enum": [
+              "wine",
+              "banana",
+              "background",
+              "unknown"
+            ]
+          },
+          "licenseId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "odor-classification",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T08",
+      "slug": "sensor-anomaly",
+      "name": {
+        "zh": "设备传感器时序异常筛查",
+        "en": "Sensor time-series anomaly screening"
+      },
+      "category": "time-series",
+      "brainMode": "fly_reservoir_experimental",
+      "artifactKinds": [
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "工业物联网软件商、设备维护分析团队；从设备传感器连续流发现异常区段，帮助人工排查。输出是分析线索，不直接执行停机或维护命令。",
+          "input": "固定设备族的多通道测量、单位、时间戳、缺失掩码、工作模式，可选设备标定。",
+          "output": "异常分数、事件区段、受影响通道、模型适用状态；未有剩余寿命标签时不预测 RUL。",
+          "brainRole": "`fly_reservoir_experimental`；利用固定循环动态作为时序特征，需证明其记忆和非线性有用。一般 reservoir 文献并未证明 MaleCNS 拓扑适合工业设备，必须显式写成探索假设。[S11]",
+          "method": "先正常数据的一步/多步预测或重构+阈值校准，训练读出层；若监督异常标签充分再分类。`modelKind=anomaly_detector`。",
+          "minerWork": "授权公共时间段的特征计算、充分统计量、受控噪声/缺失/漂移压力测试。不能将隐藏故障区间标签随任务发给矿工。",
+          "dataLicense": "UCI MetroPT-3 官方 CC BY 4.0，可用于公开原型；它有少量故障报告，不能将逐行观测视为大量独立故障。官方描述同时出现 1 Hz 和 0.1 Hz，导入器应从时间戳检查实际采样，保留冲突记录。商业发布补充客户明确授权的同类设备数据。[S12]",
+          "baseline": "统计阈值/EWMA、PCA、Isolation Forest、GRU/TCN/自编码器，以及同稀疏度随机或打乱图 reservoir。",
+          "releaseTargets": "按时间/设备而非随机行划分；预注册事件定义，不采用把整段命中补成全段正确的 point-adjusted F1。目标为独立事件召回 ≥0.90、误报 ≤1 次/设备日、检测延迟中位数 ≤60 秒（只适用于被定义的变化时间尺度）；商业验收需≥20 个独立异常事件及覆盖多个正常运行周期。现有 MetroPT-3 几个故障不足以单独满足此门槛。报告正常分布变动下的表现与人工审核价值。",
+          "billing": "`sensor_window_1k`，1,000 个固定尺寸窗口，例≤32通道×256采样点；按交付评分窗口计，不按异常数或内部脑步数计。",
+          "evidence": "一般 reservoir 方法成立；公开设备数据真实存在；果蝇脑结构对该业务的特殊收益尚无本项目证据，优先级低于 T01–T07。"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 8,
+      "defaultMiningEligible": false,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "awaiting_adapter_and_licensed_data",
+        "baselineCommand": "tools/market_baseline.py --project T08 --manifest DATASET.json --output REPORT.json",
+        "executors": [],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "samples",
+          "timestamps",
+          "deviceId",
+          "eventIntervals"
+        ],
+        "properties": {
+          "samples": {
+            "type": "array",
+            "minItems": 32,
+            "maxItems": 10000,
+            "items": {
+              "type": "array",
+              "maxItems": 32,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "timestamps": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": {
+              "type": "number"
+            }
+          },
+          "deviceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "eventIntervals": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "sensor-anomaly",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T09",
+      "slug": "navigation-policy",
+      "name": {
+        "zh": "移动机器人仿真导航与高层动作建议",
+        "en": "Simulated navigation policy"
+      },
+      "category": "navigation",
+      "brainMode": "fly_embodied_experimental",
+      "artifactKinds": [
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "教育机器人、机器人仿真和室内低速移动设备研发团队；得到可比较、可训练的目标导航策略与仿真评价。首版提供仿真及高层策略输出，不让云端 API 直接形成安全关键电机闭环。",
+          "input": "模型/机器人/环境版本、目标相对方位、低分辨率视觉或光流、距离与 IMU 观测、当前策略状态。",
+          "output": "有界的期望线速度/角速度或离散导航动作、置信度/失效标记；模型包导出可用于本地集成，低层限幅与执行由设备控制系统负责。",
+          "brainRole": "`fly_embodied_experimental`；脑约束编码器/动态网络/读出构成高层策略。可以结合 T04–T06 输出，但必须记录父模型及真正使用的参数，不把视觉子模块称完整果蝇神经系统。",
+          "method": "先模仿学习，再在明确定义的环境与奖励中强化学习；固定共享 checkpoint，分布式 actor 产轨迹、统一 learner 更新。`modelKind=navigation_policy`。不同矿工各自训练的政策不能任意平均。",
+          "minerWork": "第一版运行可验证的轻量二维导航环境与固定策略 rollout、参数候选、公开评估。MuJoCo 存在浏览器相关能力不代表 FlyGym Python 训练栈已经整体浏览器化；复杂三维/全身体模型先在受控原生执行器，浏览器任务卡准确标支持范围。官方 FlyGym 2.x 已做不向后兼容的 API 重写；先核对所需功能并固定版本，不混用 1.x 的 Gymnasium 例子与 2.x 接口。[S13]",
+          "dataLicense": "自有程序化环境与轨迹；FlyGym/NeuroMechFly Apache-2.0 软件可作研究候选，MuJoCo 软件 Apache-2.0；模型网格/纹理/原始行为数据分别检查，MuJoCo Menagerie 各模型有各自许可证，不能套用仓库总许可证。[S13][S14][S15]",
+          "baseline": "规划器+传统局部控制、行为克隆 MLP/GRU、匹配预算的普通 RL 策略；随机/打乱脑结构对照。低层物理控制与高层策略分别评估，避免把物理模型改善归功于脑。",
+          "releaseTargets": "≥1,000 个未见仿真 episode、独立地图族及噪声/摩擦扰动；目标到达率 ≥95%，碰撞 episode ≤1%，并报告路径效率、最坏分位与成本；本地推理目标如 p95 ≤20 ms 必须绑定实际测试硬件。未完成真实设备验证的版本仅标 simulation-qualified，不宣传实体部署安全性。",
+          "billing": "`navigation_rollout`，固定最长 episode/步数的仿真包；或 `policy_decision_1k`，1,000 个有界观测决策。公开下载的权重脱离平台后的调用无法自动计费，模型导出与 API 服务应分别定价和描述。",
+          "evidence": "NeuroMechFly v2 有视觉/嗅觉/反馈与具身行为仿真研究；全身体果蝇运动也有用人工神经策略训练的研究。它们不是当前 MaleCNS 全脑控制能力的证据，本任务仍需适配与独立比较。[S13]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 9,
+      "defaultMiningEligible": false,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "awaiting_adapter_and_licensed_data",
+        "baselineCommand": "tools/market_baseline.py --project T09 --manifest DATASET.json --output REPORT.json",
+        "executors": [],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "start",
+          "goal",
+          "obstacles",
+          "maximumSteps",
+          "environmentSeed"
+        ],
+        "properties": {
+          "start": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          },
+          "goal": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          },
+          "obstacles": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4
+            }
+          },
+          "maximumSteps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "environmentSeed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "navigation-policy",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    },
+    {
+      "schemaVersion": 1,
+      "code": "T10",
+      "slug": "sparse-retrieval",
+      "name": {
+        "zh": "嗅觉启发稀疏指纹与相似项检索",
+        "en": "Olfactory-inspired sparse retrieval"
+      },
+      "category": "retrieval",
+      "brainMode": "fly_sparse_hash_inspired",
+      "artifactKinds": [
+        "algorithm_service",
+        "learned_model",
+        "evaluation_report"
+      ],
+      "definition": {
+        "zh": {
+          "buyers": "工业视觉样本库、设备波形档案和数据管理工具团队；从已经取得合法使用权的特征向量中快速查找近似样本或重复项。这个买方与 T07 的传感器识别不同，不假定需要重跑整套脑模拟。",
+          "input": "明确版本的连续特征向量、集合身份、距离规范、top-k；查询和索引维度必须相同，外部 embedding 来源及许可独立登记。",
+          "output": "稀疏指纹、top-k 候选 ID、距离/相似度及可选精排结果；低维数字数据通过不等于工业语义检索有效。",
+          "brainRole": "`fly_sparse_hash_inspired`；借鉴果蝇嗅觉的归一化、稀疏扩展和 winner-take-all 表征。属于明确的果蝇启发计算，不是 MaleCNS 全脑训练。[S10]",
+          "method": "先复现固定 FlyHash 类基线；可训练输入度量/归一化、稀疏投影或重排序读出。若全部固定参数，仅发布算法服务；确实优化参数后 `learned_model`、`modelKind=retrieval_encoder`。不把从网上下载的已训练 embedding 当矿工产生的成果。",
+          "minerWork": "公共向量的指纹生成、统一参数候选评估、精确邻居小分片与召回核验、固定读出统计量；客户私有索引与查询留在受控推理域。",
+          "dataLicense": "自有程序化向量、具有商用与公开分发授权的真实特征；UCI Optical Recognition of Handwritten Digits 官方 CC BY 4.0，可作小型实现验证，5,620 个 64 维样本不足以证明大规模工业市场效果；商业发布另需应用域数据。[S16]",
+          "baseline": "精确暴力检索、随机投影 LSH、HNSW、匹配内存预算的乘积量化或向量索引；等哈希长度不等于等内存/算力，需按实际资源比较。",
+          "releaseTargets": "适用商业域≥100,000 条合法向量和≥1,000 个独立查询，top-10 recall 相对精确邻居 ≥0.95；同召回率下相对最强适用索引至少满足预注册的≥20%内存或成本优势，或在固定预算下有可靠召回改善。若只有算法复现或未胜过成熟索引，则保留研究候选，不凭“果蝇算法”直接收费发布优越性主张。",
+          "billing": "`encoded_vector_1k` 为至多 1,000 个向量编码，对应 sparse.encode；`retrieval_query_1k` 为至多 1,000 次固定维度/top-k 查询，对应 sparse.search。索引构建按 indexed_vector_1k 单列；托管存储另列持续占用单位，二者正式定价前保持待配置，不隐含免费无限存储。避免将缓存命中伪装成新训练。",
+          "evidence": "原始 Science 论文将果蝇嗅觉计算转译为相似检索算法，有明确计算研究依据；FlyPoW 自有适配、工业数据表现与相对现代索引的优势尚未实证。[S10]"
+        }
+      },
+      "projectStatus": "proposed",
+      "priority": 10,
+      "defaultMiningEligible": false,
+      "hardware": [
+        "browser_cpu",
+        "native_cpu"
+      ],
+      "generationPlan": {
+        "schemaVersion": 1,
+        "state": "planned",
+        "taskTypes": [
+          "simulation_sample",
+          "parameter_candidate",
+          "feature_statistics",
+          "authorized_replay",
+          "evaluation_batch"
+        ],
+        "taskBudgetAtoms": null,
+        "verificationBudgetAtoms": null,
+        "storageBudgetLamports": null,
+        "fundingRequired": true,
+        "freezeBeforeWork": [
+          "taskManifestRoot",
+          "executorVersion",
+          "featureSpecHash",
+          "evaluationPolicyHash",
+          "contributionPolicyHash",
+          "lineageAllocationPolicy"
+        ],
+        "datasetRequired": true,
+        "datasetStatus": "awaiting_adapter_and_licensed_data",
+        "baselineCommand": "tools/market_baseline.py --project T10 --manifest DATASET.json --output REPORT.json",
+        "executors": [],
+        "maximumNewcomerAssignments": 1,
+        "globalNewcomerAssignments": 4,
+        "maximumLeaseSeconds": 120,
+        "maximumWallClockSeconds": 900,
+        "maximumAttempts": 3,
+        "progressRenewal": "new verified complete slice; connection-only heartbeat cannot renew",
+        "acceptancePolicyState": "draft; freeze against real baseline before funding"
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vectors",
+          "queries",
+          "topK",
+          "seed"
+        ],
+        "properties": {
+          "vectors": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 1000,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 1024,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "queries": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 1024,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "topK": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "executionKind",
+          "metrics",
+          "scope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          },
+          "executionKind": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      },
+      "baselineAdapter": "sparse-retrieval",
+      "acceptanceStatus": "design_thresholds_not_achieved",
+      "budgetAtoms": null,
+      "acceptedUnits": 0,
+      "publishedModels": 0,
+      "revenueAtoms": "0",
+      "licenseStatus": "per_asset_review_required",
+      "evidenceSource": "requirement-design; not project performance",
+      "achievedMetrics": null
+    }
+  ],
+  "products": [
+    {
+      "code": "M01",
+      "slug": "flybrain-core",
+      "name": "FlyBrain Core",
+      "projects": [
+        "T01",
+        "T02"
+      ],
+      "artifactKind": "simulator_service",
+      "brainMode": "male_cns_frozen",
+      "serviceSkus": [
+        "core.cached-response",
+        "core.full-replay",
+        "core.target-search"
+      ]
+    },
+    {
+      "code": "M02",
+      "slug": "flymotion-lite",
+      "name": "FlyMotion-Lite",
+      "projects": [
+        "T04"
+      ],
+      "artifactKind": "learned_model",
+      "brainMode": "fly_visual_adapted",
+      "serviceSkus": [
+        "motion.batch"
+      ]
+    },
+    {
+      "code": "M03",
+      "slug": "flyheading-lite",
+      "name": "FlyHeading-Lite",
+      "projects": [
+        "T06"
+      ],
+      "artifactKind": "learned_model",
+      "brainMode": "fly_compass_inspired",
+      "serviceSkus": [
+        "heading.batch"
+      ]
+    },
+    {
+      "code": "M04",
+      "slug": "flyodor-3",
+      "name": "FlyOdor-3",
+      "projects": [
+        "T07"
+      ],
+      "artifactKind": "learned_model",
+      "brainMode": "fly_olfactory_inspired",
+      "serviceSkus": [
+        "odor.batch"
+      ]
+    },
+    {
+      "code": "M05",
+      "slug": "flysparse-search",
+      "name": "FlySparseSearch",
+      "projects": [
+        "T10"
+      ],
+      "artifactKind": "algorithm_service",
+      "brainMode": "fly_sparse_hash_inspired",
+      "serviceSkus": [
+        "sparse.encode",
+        "sparse.search"
+      ]
+    }
+  ],
+  "priceTemplates": [
+    {
+      "skuId": "core.cached-response",
+      "currency": "FLY",
+      "decimals": 8,
+      "unitType": "response_query",
+      "amountAtoms": "20000000",
+      "maximumUnits": 1,
+      "state": "draft",
+      "benchmarkRoot": null,
+      "confirmedBy": null
+    },
+    {
+      "skuId": "core.full-replay",
+      "currency": "FLY",
+      "decimals": 8,
+      "unitType": "exact_trial",
+      "amountAtoms": "200000000",
+      "maximumUnits": 1,
+      "state": "draft",
+      "benchmarkRoot": null,
+      "confirmedBy": null
+    },
+    {
+      "skuId": "core.target-search",
+      "currency": "FLY",
+      "decimals": 8,
+      "unitType": "bounded_search_job",
+      "amountAtoms": "2000000000",
+      "maximumUnits": 8,
+      "state": "draft",
+      "benchmarkRoot": null,
+      "confirmedBy": null
+    },
+    {
+      "skuId": "motion.batch",
+      "currency": "FLY",
+      "decimals": 8,
+      "unitType": "vision_frame_pair_100",
+      "amountAtoms": "50000000",
+      "maximumUnits": 100,
+      "state": "draft",
+      "benchmarkRoot": null,
+      "confirmedBy": null
+    },
+    {
+      "skuId": "heading.batch",
+      "currency": "FLY",
+      "decimals": 8,
+      "unitType": "heading_step_1k",
+      "amountAtoms": "50000000",
+      "maximumUnits": 1000,
+      "state": "draft",
+      "benchmarkRoot": null,
+      "confirmedBy": null
+    },
+    {
+      "skuId": "odor.batch",
+      "currency": "FLY",
+      "decimals": 8,
+      "unitType": "odor_window_100",
+      "amountAtoms": "20000000",
+      "maximumUnits": 100,
+      "state": "draft",
+      "benchmarkRoot": null,
+      "confirmedBy": null
+    },
+    {
+      "skuId": "sparse.encode",
+      "currency": "FLY",
+      "decimals": 8,
+      "unitType": "encoded_vector_1k",
+      "amountAtoms": "10000000",
+      "maximumUnits": 1000,
+      "state": "draft",
+      "benchmarkRoot": null,
+      "confirmedBy": null
+    },
+    {
+      "skuId": "sparse.search",
+      "currency": "FLY",
+      "decimals": 8,
+      "unitType": "retrieval_query_1k",
+      "amountAtoms": "100000000",
+      "maximumUnits": 1000,
+      "state": "draft",
+      "benchmarkRoot": null,
+      "confirmedBy": null
+    }
+  ],
+  "revenueTemplate": {
+    "state": "draft",
+    "historicContributorsBps": 6000,
+    "servingBps": 2500,
+    "archiveBps": 500,
+    "platformBps": 1000,
+    "rounding": "cumulative-reserve",
+    "requiresPerPoolCostCoverage": true
+  }
+}

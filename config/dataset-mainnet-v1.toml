@@ -1,0 +1,24 @@
+# This file is intentionally NOT an activated mainnet configuration.
+# The canonical values must be reproduced independently before genesis.
+
+active = false
+dataset = "MaleCNS v1.0"
+official_page = "https://male-cns.janelia.org/download/"
+official_object = "gs://flyem-male-cns/v1.0/connectome-data/flat-connectome/syn-partners-male-cns-v1.0-minconf-0.5.feather"
+official_https = "https://storage.googleapis.com/flyem-male-cns/v1.0/connectome-data/flat-connectome/syn-partners-male-cns-v1.0-minconf-0.5.feather"
+official_bytes = 6777179098
+official_generation = 1780494942562468
+official_md5 = "58efcf712f8c4d4de5f2ad51e97def76"
+official_crc32c = "8d394d20"
+license = "CC-BY-4.0"
+
+canonical_format = "flypow-canonical-synapses-v1"
+canonical_record_bytes = 40
+canonical_chunk_records = 4096
+canonical_record_count = "TBD_AFTER_INDEPENDENT_REPRODUCTION"
+canonical_sha256 = "TBD_AFTER_INDEPENDENT_REPRODUCTION"
+canonical_merkle_root = "TBD_AFTER_INDEPENDENT_REPRODUCTION"
+converter_source_hash = "TBD_AFTER_PROTOCOL_FREEZE"
+
+attribution = "FlyEM Project Team at HHMI Janelia, Cambridge Connectomics Group, and Google Research"
+
