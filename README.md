@@ -88,3 +88,8 @@ verification. Public receipts are in the contracts repository under
 archives remain outside source repositories. The two-unit acceptance budget is
 complete. Future paid work requires a new prospectively frozen finite plan.
 Actual extension-wallet and physical-device confirmation remain separate gates.
+
+
+## Community contributions
+
+The Social service (`tools/social_server.mjs`) shares existing wallet sessions and SQLite/WAL while running separately on loopback 8791. `config/social-community-v1.sql` is an additive checksummed migration. Run `npm run test:community`, `npm run typecheck:community` and `npm run lint:community` in the assembled workspace. The new API/provider/client modules opt into JavaScript type checking; legacy financial modules retain their existing validation suites. No relayer or asset execution is started by the Social service. See `docs/social-community-system.md`.

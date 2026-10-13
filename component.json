@@ -59,7 +59,14 @@
     "tests/mining_transport_v3.mjs": "tests/mining_transport_v3.mjs",
     "tests/wallet_devnet_v3.mjs": "tests/wallet_devnet_v3.mjs",
     "tests/wallet_browser_v3_server.mjs": "tests/wallet_browser_v3_server.mjs",
-    "tools/certify_result_archive_v3.mjs": "tools/certify_result_archive_v3.mjs"
+    "tools/certify_result_archive_v3.mjs": "tools/certify_result_archive_v3.mjs",
+    "config/community-allocation-v1.json": "config/community-allocation-v1.json",
+    "config/social-community-v1.sql": "config/social-community-v1.sql",
+    "tools/social_community.mjs": "tools/social_community.mjs",
+    "tools/social_server.mjs": "tools/social_server.mjs",
+    "tools/x_public_verification.mjs": "tools/x_public_verification.mjs",
+    "tests/social_community.mjs": "tests/social_community.mjs",
+    "tests/social_browser_server.mjs": "tests/social_browser_server.mjs"
   },
   "project": "flybrainlabs"
 }

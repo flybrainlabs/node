@@ -1,0 +1,16 @@
+{
+  "schema": "flybrainlabs-community-allocation-v1",
+  "version": 1,
+  "assetName": "flybrainwork",
+  "symbol": "FBW",
+  "decimals": 8,
+  "communityPoolAtoms": "3118332300000000",
+  "airdropBudgetAtoms": "2500000000000000",
+  "otherEcosystemAtoms": "618332300000000",
+  "allocationState": "budget",
+  "tokenExecutionEnabled": false,
+  "pointsRulesVersion": "community-contributions-v1",
+  "initialTask": "connect_x_identity_v1",
+  "initialPoints": 100,
+  "challengeSeconds": 1800
+}
