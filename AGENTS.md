@@ -29,6 +29,17 @@ branding, documentation, release notes and new technical explanations.
 - Each repository must contain actual component code, ownership metadata and
   correct build/test instructions. Never describe unfinished features as live.
 
+## Token identity and public labels
+
+Use **flybrainwork** as the token name and **FBW** as its current public symbol.
+Current website labels, translations, guides and release explanations use FBW.
+The existing asset is on Solana Devnet; a display rename does not change its mint,
+authorities, supply, pools, program or cluster and does not issue another token.
+Keep frozen receipt bytes, policy objects, signature domains and historical
+contracts unchanged. Explain compatibility separately instead of rewriting them.
+On compact/mobile navigation, place the language switch inside the menu and keep
+reading panels in normal document flow, with no overlays over the prose.
+
 ## Compatibility, retained state and secrets
 
 - Preserve scientific identity bytes, frozen vectors, signatures, addresses,
@@ -52,7 +63,7 @@ immutable versions, finite authorization, checked atom amounts, durable
 settlement and cumulative historical entitlements. Physical-device, independent
 operator and external scientific acceptance require their actual evidence.
 
-Repository publication does not activate mainnet, formal FLY issuance, production
+Repository publication does not activate mainnet, formal FBW issuance, production
 payments or unconfigured asset routes. Those operations retain their own identity,
 funding and authorization gates. The existing official website and the separately
 authorized X account are not changed by selecting the GitHub project name.
