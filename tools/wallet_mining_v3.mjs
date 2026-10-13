@@ -11,6 +11,7 @@ import {addresses,meta,instruction,system,decodeGrant,decodeGeneration,decodeUni
 import {inspect} from './settlement_bridge_v2.mjs';
 import {id,unhex,commitment,claimId,validateManifest,validateRound,canonical} from '../web/target-protocol-v2.mjs';
 import {verified,api} from './target_dev_identity.mjs';
+import {WalletRpcProxy,walletRpcConfiguration} from './wallet_rpc_v3.mjs';
 const digest=b=>createHash('sha256').update(b).digest('hex'),seconds=()=>Math.floor(Date.now()/1000);
 const atom=(s,{zero=false}={})=>{if(typeof s!=='string'||! /^(0|[1-9][0-9]{0,19})$/.test(s))throw fail('INVALID_AMOUNT');const n=BigInt(s);if(n>0xffffffffffffffffn||(!zero&&n===0n))throw fail('INVALID_AMOUNT');return n;};
 const fail=(code,status=400)=>Object.assign(new Error(code),{code,status});
@@ -23,9 +24,8 @@ export function signInMessage(input){
 export class WalletMiningService {
   constructor(config,db,relayer,{connection=null,clock=seconds}={}){
     if(config.schema!=='flybrainlabs-wallet-mining-config-v3'||!['devnet','localnet'].includes(config.cluster)||!config.origins?.length||config.origins.some(o=>new URL(o).origin!==o)||config.units?.length!==2||config.units.some(u=>! /^[a-f0-9]{64}$/.test(u.goalId)||! /^[a-f0-9]{64}$/.test(u.economicTaskId)||atom(u.rewardAtoms)===0n)||new Set(config.units.map(u=>u.economicTaskId)).size!==2)throw fail('INVALID_CONFIGURATION');
-    if(config.cluster==='devnet'&&(config.genesisHash!=='EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG'||config.rpc!=='https://api.devnet.solana.com'))throw fail('WRONG_CHAIN');
-    if(config.cluster==='localnet'&&! /^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(config.rpc))throw fail('WRONG_CHAIN');
-    Object.assign(this,{config,db,relayer,clock});this.connection=connection||new Connection(config.rpc,{commitment:'finalized',disableRetryOnRateLimit:true,fetch:(url,options)=>fetch(url,{...options,signal:AbortSignal.timeout(15_000)})});this.program=new PublicKey(config.programId);this.a=addresses(this.program);this.active=false;this.chainSnapshot=null;this.requests=new Map();
+    const rpc=walletRpcConfiguration(config);
+    Object.assign(this,{config,db,relayer,clock});this.connection=connection||new Connection(rpc.upstream,{commitment:'finalized',disableRetryOnRateLimit:true,fetch:(url,options)=>fetch(url,{...options,signal:AbortSignal.timeout(15_000),redirect:'error'})});this.rpcProxy=new WalletRpcProxy(this);this.program=new PublicKey(config.programId);this.a=addresses(this.program);this.active=false;this.chainSnapshot=null;this.requests=new Map();
     if(relayer&&relayer.publicKey.toBase58()!==config.relayer)throw fail('WRONG_RELAYER');
     db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000; PRAGMA foreign_keys=ON;');
   }
@@ -185,7 +185,8 @@ export function serve(service,{host='127.0.0.1',port=8789}={}){
       else if(path==='configuration'&&!mutation)result=Object.fromEntries(['schema','enabled','cluster','rpc','genesisHash','programId','mint','policyHash','stage','deadline','budgetAtoms','units','project','relayer','settlers','authorityId','apiBase','retentionSeconds','testOnly','defaultGrant','asOf'].map(k=>[k,k==='asOf'?service.clock():service.config[k]]));
       else if(/^evidence\/[a-f0-9]{64}$/.test(path)&&!mutation){const row=service.db.prepare('SELECT * FROM mining_v3_candidates WHERE claim_id=?').get(path.slice(9));if(!row)throw fail('NOT_FOUND',404);result=service.publicRecord(row);}
       else {const session=service.authenticate(origin,req.headers,mutation);
-        if(path==='logout'&&mutation)result=service.logout(session);
+        if(path==='rpc'&&mutation)result=await service.rpcProxy.request(body,session);
+        else if(path==='logout'&&mutation)result=service.logout(session);
         else if(path==='balances'&&!mutation)result=await service.balances(session);
         else if(path==='grant/prepare'&&mutation)result=await service.prepareGrant(session,body);
         else if(path==='grant/confirm'&&mutation)result=await service.confirmGrant(session,body);

@@ -11,6 +11,12 @@ const server=createServer(async(req,res)=>{try{const path=new URL(req.url,'http:
  if(path==='/bundle.mjs'){res.setHeader('Content-Type','text/javascript');res.end(await readFile(new URL('../web/vendor/generated/wallet-session-v3.mjs',import.meta.url)));return;}
  if(path==='/public'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({cfg,wallets:[minerA,minerB].map((k,n)=>({name:'Fixture '+n,address:k.publicKey.toBase58(),publicKey:Array.from(k.publicKey.toBytes())}))}));return;}
  const chunks=[];for await(const b of req)chunks.push(b);const body=chunks.length?JSON.parse(Buffer.concat(chunks)):{};let value;
+ if(path==='/rpc'){
+  if(req.headers.authorization!=='Bearer fixture-token'||req.headers['x-mining-csrf']!=='fixture-csrf')throw new Error('Fixture RPC authorization missing');
+  if(req.headers['x-fixture-limited']==='yes'){res.writeHead(429);res.end('{"code":"RPC_RATE_LIMITED"}');return;}
+  value={jsonrpc:'2.0',id:body.id,result:body.method==='getGenesisHash'?cfg.genesisHash:body.method==='getMinimumBalanceForRentExemption'?1000:body.method==='getSignatureStatuses'?{context:{slot:1},value:[{slot:1,confirmations:null,err:null,confirmationStatus:'finalized'}]}:0};
+  res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));return;
+ }
  if(path.endsWith('/challenge'))value={input:{nonce:'fixture-nonce'},message:'Isolated mock challenge'};
  else if(path.endsWith('/login')){activeWallet=body.address;value={wallet:activeWallet,token:'fixture-token',csrfToken:'fixture-csrf',expiresAt:Math.floor(Date.now()/1000)+1000};}
  else if(path.endsWith('/balances'))value={wallet:activeWallet,mint:cfg.mint,commitment:'finalized',solLamports:activeWallet===minerA.publicKey.toBase58()?'1000000':'2000000',tokenAtoms:'0',grants:grants.get(activeWallet)?[grants.get(activeWallet)]:[]};

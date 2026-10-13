@@ -66,7 +66,9 @@
     "tools/social_server.mjs": "tools/social_server.mjs",
     "tools/x_public_verification.mjs": "tools/x_public_verification.mjs",
     "tests/social_community.mjs": "tests/social_community.mjs",
-    "tests/social_browser_server.mjs": "tests/social_browser_server.mjs"
+    "tests/social_browser_server.mjs": "tests/social_browser_server.mjs",
+    "tools/wallet_rpc_v3.mjs": "tools/wallet_rpc_v3.mjs",
+    "tests/wallet_rpc_v3.mjs": "tests/wallet_rpc_v3.mjs"
   },
   "project": "flybrainlabs"
 }
