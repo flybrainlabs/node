@@ -1,0 +1,21 @@
+{
+  "schema": "flybrainlabs-github-community-tasks-v2",
+  "owner": "flybrainlabs",
+  "repositories": [
+    {
+      "name": "miner",
+      "id": "1415404414",
+      "description": "Browser computation and recoverable mining results."
+    },
+    {
+      "name": "infra",
+      "id": "1415405299",
+      "description": "Reproducible assembly and deployment tools."
+    },
+    {
+      "name": "node",
+      "id": "1415404215",
+      "description": "Node services and durable community verification."
+    }
+  ]
+}

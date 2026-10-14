@@ -23,7 +23,7 @@ const login=key=>{
 };
 const sessions=keys.map(login),operator=login(operatorKey),allocation=JSON.parse(await readFile('config/community-allocation-v1.json','utf8'));
 const githubConfig={clientId:'fixture-client',clientSecret:'fixture-secret',encryptionKey:'34'.repeat(32),callbackUrl:origin+'/api/auth/github/callback',engagementRewardsEnabled:true};
-const repositories=JSON.parse(await readFile('config/github-community-tasks-v1.json','utf8')).repositories;
+const repositories=JSON.parse(await readFile('config/github-community-tasks-v2.json','utf8')).repositories;
 const tokens=new Map(),codes=new Map();let fetches=0,relationStatus=204,repositoryOverride=null,userOverride=null,refreshes=0;
 const provider=new GitHubProvider({...githubConfig,fetcher:async(url,request)=>{
  fetches++;assert(['https://api.github.com','https://github.com'].includes(url.origin));
@@ -51,7 +51,12 @@ function flow(session,user={id:1001,login:'fixture-one'}){
 }
 async function connect(session,user){const q=flow(session,user);assert.equal((await service.github.callback(q.params,q.browser)).status,'ready');const result=service.github.complete(session,q.browser);return {q,result};}
 try{
- check('third additive migration and stable one-time tasks',()=>{assert.equal(db.prepare('SELECT COUNT(*) n FROM social_schema_migrations').get().n,3);assert.equal(db.prepare("SELECT COUNT(*) n FROM social_tasks WHERE category='github'").get().n,12);assert.equal(db.prepare("SELECT COUNT(*) n FROM social_tasks WHERE category='github' AND repeatable<>0").get().n,0);});
+ check('third additive migration and stable one-time tasks',()=>{assert.equal(db.prepare('SELECT COUNT(*) n FROM social_schema_migrations').get().n,3);assert.equal(db.prepare("SELECT COUNT(*) n FROM social_tasks WHERE category='github'").get().n,4);assert.equal(db.prepare("SELECT COUNT(*) n FROM social_tasks WHERE category='github' AND repeatable<>0").get().n,0);});
+ const retired=['github_follow_flybrainlabs_v1',...['explorer','contracts','protocol','sdk','research','docs','examples'].map(name=>'github_star_'+name+'_v1')];
+ for(const key of retired)db.prepare("INSERT INTO social_tasks SELECT ?,title,description,reward_points,category,verification_type,enabled,repeatable,revision,created_at,updated_at FROM social_tasks WHERE task_key='github_star_miner_v1'").run(key);
+ check('legacy task definitions are retained while only selected tasks are listed',()=>{assert.equal(db.prepare("SELECT COUNT(*) n FROM social_tasks WHERE category='github'").get().n,12);assert.deepEqual(service.tasks().tasks.filter(t=>t.category==='github').map(t=>t.id).sort(),['github_connect_v1','github_star_infra_v1','github_star_miner_v1','github_star_node_v1']);assert.equal(service.github.view(sessions[0].wallet).starTotal,3);});
+ const beforeRetired=fetches;for(const taskId of retired)await reject(()=>service.github.verify(sessions[0],{taskId}),'github_task_invalid');
+ check('stale or forged retired-task requests never call GitHub',()=>assert.equal(fetches,beforeRetired));
  service.adjustPoints(operator,{wallet:sessions[0].wallet,pointsDelta:125,requestId:randomUUID(),reason:'Retain prior isolated community contribution points'});
  const prior=service.createSnapshot(operator,{requestId:randomUUID(),reason:'Freeze isolated historical community snapshot'}),frozen=JSON.stringify(service.snapshotContent(prior.snapshotId));
  const normal=await connect(sessions[0]);
@@ -70,38 +75,42 @@ try{
  const cancelled=flow(sessions[5],{id:1005,login:'fixture-five'});assert.equal((await service.github.callback(new URLSearchParams({state:cancelled.state,error:'access_denied'}),cancelled.browser)).status,'cancelled');checks++;
  const revoked=flow(sessions[6],{id:1006,login:'fixture-six'});auth.logout(sessions[6]);await reject(()=>service.github.callback(revoked.params,revoked.browser),'github_original_session_invalid');
  const expired=flow(sessions[7],{id:1007,login:'fixture-seven'});now+=601;await reject(()=>service.github.callback(expired.params,expired.browser),'github_state_expired');
- const beforeRefresh=refreshes;const follow=await service.github.verify(sessions[0],{taskId:'github_follow_flybrainlabs_v1'});
- check('expired credentials refresh and Follow uses bound identity',()=>{assert.equal(follow.pointsAwarded,10);assert.equal(refreshes,beforeRefresh+1);assert.equal(follow.profile.points,185);});
- const beforeReplay=fetches;const replay=await service.github.verify(sessions[0],{taskId:'github_follow_flybrainlabs_v1'});check('completed task does not call provider or pay again',()=>{assert.equal(replay.pointsAwarded,0);assert.equal(fetches,beforeReplay);});
+ const beforeRefresh=refreshes;const follow=await service.github.verify(sessions[0],{taskId:'github_star_infra_v1'});
+ check('expired credentials refresh and Star uses bound identity',()=>{assert.equal(follow.pointsAwarded,1);assert.equal(refreshes,beforeRefresh+1);assert.equal(follow.profile.points,176);});
+ const beforeReplay=fetches;const replay=await service.github.verify(sessions[0],{taskId:'github_star_infra_v1'});check('completed task does not call provider or pay again',()=>{assert.equal(replay.pointsAwarded,0);assert.equal(fetches,beforeReplay);});
  const privateFailure=repositories[0];repositoryOverride={id:Number(privateFailure.id),private:true,visibility:'private',full_name:'flybrainlabs/'+privateFailure.name,owner:{login:'flybrainlabs'}};
  await reject(()=>service.github.verify(sessions[0],{taskId:'github_star_'+privateFailure.name+'_v1'}),'github_repository_unavailable');repositoryOverride=null;now+=11;
  const concurrent=await Promise.allSettled(Array.from({length:5},()=>service.github.verify(sessions[0],{taskId:'github_star_miner_v1'})));
- check('concurrent verification awards one point exactly once',()=>{assert.equal(concurrent.filter(r=>r.status==='fulfilled').length,1);assert.equal(service.profile(sessions[0]).points,186);});
- for(const repo of repositories.filter(r=>r.name!=='miner')){
-  assert(repo.id,'The public examples repository must be confirmed before this acceptance gate');
+ check('concurrent verification awards one point exactly once',()=>{assert.equal(concurrent.filter(r=>r.status==='fulfilled').length,1);assert.equal(service.profile(sessions[0]).points,177);});
+ for(const repo of repositories.filter(r=>!['miner','infra'].includes(r.name))){
+  assert(repo.id,'The selected public repository must be confirmed before this acceptance gate');
   const result=await service.github.verify(sessions[0],{taskId:'github_star_'+repo.name+'_v1'});assert.equal(result.pointsAwarded,1);checks++;
  }
- check('all twelve tasks total seventy in the unified ledger',()=>{const profile=service.profile(sessions[0]);assert.equal(profile.points,195);assert.equal(profile.github.pointsEarned,70);assert.equal(profile.github.starCompleted,10);assert.equal(profile.github.completedTaskIds.length,12);assert.equal(db.prepare('SELECT SUM(points_delta) total FROM community_points_ledger WHERE wallet=?').get(sessions[0].wallet).total,profile.points);assert.equal(service.leaderboard().items[0].points,195);});
+ check('binding and three Star tasks total fifty-three in the unified ledger',()=>{const profile=service.profile(sessions[0]);assert.equal(profile.points,178);assert.equal(profile.github.pointsEarned,53);assert.equal(profile.github.starCompleted,3);assert.equal(profile.github.completedTaskIds.length,4);assert.equal(db.prepare('SELECT SUM(points_delta) total FROM community_points_ledger WHERE wallet=?').get(sessions[0].wallet).total,profile.points);assert.equal(service.leaderboard().items[0].points,178);});
  relationStatus=404;const noRepeat=await service.github.verify(sessions[0],{taskId:'github_star_miner_v1'});assert.equal(noRepeat.pointsAwarded,0);checks++;
  check('historical snapshot remains byte-identical',()=>assert.equal(JSON.stringify(service.snapshotContent(prior.snapshotId)),frozen));
- const current=service.createSnapshot(login(operatorKey),{requestId:randomUUID(),reason:'Include verified GitHub contributions in new snapshot'});check('new snapshot includes GitHub ledger contributions',()=>assert.equal(service.snapshotContent(current.snapshotId).entries[0].points,195));
+ const current=service.createSnapshot(login(operatorKey),{requestId:randomUUID(),reason:'Include verified GitHub contributions in new snapshot'});check('new snapshot includes GitHub ledger contributions',()=>assert.equal(service.snapshotContent(current.snapshotId).entries[0].points,178));
  const extra=await connect(sessions[8],{id:1008,login:'fixture-eight'});assert.equal(extra.result.pointsAwarded,50);checks++;
- await reject(()=>service.github.verify(sessions[8],{taskId:'github_follow_flybrainlabs_v1'}),'github_not_followed');
+ await reject(()=>service.github.verify(sessions[8],{taskId:'github_star_infra_v1'}),'github_not_starred');
  for(const [status,expected] of [[401,'github_reauthorization_required'],[403,'github_access_restricted'],[429,'github_rate_limited'],[503,'github_unavailable']]){
-  now+=70;relationStatus=status;provider.blockedUntil=0;await reject(()=>service.github.verify(sessions[8],{taskId:'github_follow_flybrainlabs_v1'}),expected);assert.equal(service.profile(sessions[8]).points,50);
+  now+=70;relationStatus=status;provider.blockedUntil=0;await reject(()=>service.github.verify(sessions[8],{taskId:'github_star_infra_v1'}),expected);assert.equal(service.profile(sessions[8]).points,50);
  }
  now+=70;relationStatus=204;provider.blockedUntil=0;userOverride={id:1008,login:'renamed-fixture',type:'User',avatar_url:'https://avatars.githubusercontent.com/u/1008'};
- const renamed=await service.github.verify(sessions[8],{taskId:'github_follow_flybrainlabs_v1'});check('username changes preserve stable GitHub identity',()=>{assert.equal(renamed.pointsAwarded,10);assert.equal(renamed.profile.github.binding.login,'renamed-fixture');});userOverride=null;
+ const renamed=await service.github.verify(sessions[8],{taskId:'github_star_infra_v1'});check('username changes preserve stable GitHub identity',()=>{assert.equal(renamed.pointsAwarded,1);assert.equal(renamed.profile.github.binding.login,'renamed-fixture');});userOverride=null;
  const disabled=await new SocialCommunityService(auth,allocation,{githubConfig:{...githubConfig,engagementRewardsEnabled:false},githubProvider:provider}).initialize();
- await reject(()=>disabled.github.verify(sessions[8],{taskId:'github_star_miner_v1'}),'github_engagement_paused');assert.equal(service.profile(sessions[8]).points,60);checks++;
+ await reject(()=>disabled.github.verify(sessions[8],{taskId:'github_star_miner_v1'}),'github_engagement_paused');assert.equal(service.profile(sessions[8]).points,51);checks++;
  db.prepare("UPDATE social_tasks SET category='community' WHERE task_key='github_star_miner_v1'").run();
  await reject(()=>disabled.github.verify(sessions[8],{taskId:'github_star_miner_v1'}),'github_engagement_paused');
  db.prepare("UPDATE social_tasks SET category='github' WHERE task_key='github_star_miner_v1'").run();
- const empty=await new SocialCommunityService(auth,allocation).initialize();check('missing private configuration retains existing Social service',()=>{assert.equal(empty.profile(sessions[0]).points,195);assert.equal(empty.github.configured,false);assert.equal(empty.tasks().tasks.find(t=>t.id==='github_connect_v1').available,false);});
+ const empty=await new SocialCommunityService(auth,allocation).initialize();check('missing private configuration retains existing Social service',()=>{assert.equal(empty.profile(sessions[0]).points,178);assert.equal(empty.github.configured,false);assert.equal(empty.tasks().tasks.find(t=>t.id==='github_connect_v1').available,false);});
  await reject(()=>service.github.verify(sessions[8],{taskId:'github_star_miner_v1',wallet:sessions[0].wallet}),'github_task_invalid');
  check('GitHub does not trigger X invitation rewards',()=>assert.equal(db.prepare('SELECT COUNT(*) n FROM community_referral_rewards').get().n,0));
- check('history and administration use existing totals',()=>{assert.equal(service.pointsHistory(sessions[0].wallet,{limit:'100'}).items.length,13);const summary=service.adminOverview(operator).github;assert.equal(summary.pointsAwarded,180);assert(summary.verificationResults.some(r=>r.result_code==='github_rate_limited'));assert(!JSON.stringify(summary).includes('fixture-access'));});
+ check('history and administration use existing totals',()=>{assert.equal(service.pointsHistory(sessions[0].wallet,{limit:'100'}).items.length,5);const summary=service.adminOverview(operator).github;assert.equal(summary.pointsAwarded,154);assert(summary.verificationResults.some(r=>r.result_code==='github_rate_limited'));assert(!JSON.stringify(summary).includes('fixture-access'));});
  check('ledger, completions and identity are immutable',()=>{assert.throws(()=>db.prepare('DELETE FROM community_points_ledger').run());assert.throws(()=>db.prepare('DELETE FROM social_task_completions').run());assert.throws(()=>db.prepare("UPDATE social_github_bindings SET github_user_id='9999'").run());assert.throws(()=>db.prepare('DELETE FROM social_github_bindings').run());});
+ const historical=login(Keypair.generate()),legacyTask=db.prepare("SELECT * FROM social_tasks WHERE task_key='github_star_explorer_v1'").get();
+ service.transaction(()=>service.github.award(historical,legacyTask,'9001','isolated historical fixture','https://github.com/flybrainlabs/explorer','1415404602'));
+ const historicalLedger=JSON.stringify(db.prepare('SELECT * FROM community_points_ledger WHERE wallet=?').all(historical.wallet));
+ check('retired Star receipts retain points without increasing selected-task progress',()=>{const profile=service.profile(historical);assert.equal(profile.points,1);assert.equal(profile.github.pointsEarned,1);assert.equal(profile.github.starCompleted,0);assert.equal(profile.github.starTotal,3);assert(profile.github.completedTaskIds.includes('github_star_explorer_v1'));});
  server=serveSocial(service,{port:0});await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port;
  const request=async(path,session=null,body=null,cookie=null)=>{const response=await fetch(base+path,{method:body===null?'GET':'POST',headers:{...(session?.headers||{Origin:origin}),...(cookie?{Cookie:cookie}:{})},body:body===null?undefined:JSON.stringify(body),redirect:'manual'});return {response,value:response.status===303?null:await response.json()};};
  const health=await request('/api/social/health');assert.equal(health.value.schemaVersion,3);checks++;
@@ -110,11 +119,12 @@ try{
  const api=await request('/api/social/github/start',sessions[0],{});check('start sets a secure session-specific cookie',()=>{assert.equal(api.response.status,200);assert.match(api.response.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Lax/);assert(!JSON.stringify(api.value).includes('fixture-secret'));});
  const apiUrl=new URL(api.value.authorizeUrl),apiCode='fixture-http-code-'+(++sequence),apiCookie=api.response.headers.get('set-cookie').split(';')[0];codes.set(apiCode,{user:{id:1001,login:'fixture-one'},challenge:apiUrl.searchParams.get('code_challenge')});
  const redirected=await fetch(base+'/api/auth/github/callback?'+new URLSearchParams({state:apiUrl.searchParams.get('state'),code:apiCode}),{headers:{Cookie:apiCookie},redirect:'manual'});assert.equal(redirected.status,303);assert.equal(redirected.headers.get('location'),origin+'/social/?github=ready');checks++;
- const finalized=await request('/api/social/github/complete',sessions[0],{},apiCookie);assert.equal(finalized.response.status,200);assert.equal(finalized.value.pointsAwarded,0);assert.equal(finalized.value.profile.points,195);checks++;
+ const finalized=await request('/api/social/github/complete',sessions[0],{},apiCookie);assert.equal(finalized.response.status,200);assert.equal(finalized.value.pointsAwarded,0);assert.equal(finalized.value.profile.points,178);checks++;
  const replayFlow=flow(sessions[0]);await reject(()=>service.github.callback(new URLSearchParams({state:replayFlow.state,code:apiCode}),replayFlow.browser),'github_code_used');
  const callback=await request('/api/auth/github/callback?state=invalid&code=invalid');check('callback fails to a fixed clean redirect',()=>{assert.equal(callback.response.status,303);assert(callback.response.headers.get('location').startsWith(origin+'/social/?github=failed'));assert(!callback.response.headers.get('location').includes('code=invalid'));});
  check('duplicate cookie names and absent cookie are rejected',()=>{assert.equal(githubCookie({cookie:GITHUB_COOKIE+'='+'a'.repeat(43)+'; '+GITHUB_COOKIE+'='+'b'.repeat(43)}),null);assert.equal(githubCookie({}),null);});
  await new Promise(r=>server.close(r));server=null;db.close();db=new DatabaseSync(file);auth=await new WalletMiningService(config,db,null,{clock:()=>now}).initialize();service=await new SocialCommunityService(auth,allocation,{githubConfig,githubProvider:provider}).initialize();
- check('restart preserves completed tasks credentials and points',()=>{assert.equal(service.profile(sessions[0]).points,195);assert.equal(service.profile(sessions[0]).github.starCompleted,10);assert.equal(service.github.complete(sessions[0],normal.q.browser).pointsAwarded,0);assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');});
- console.log(JSON.stringify({passed:true,checks,providerRequests:fetches,githubTasks:12,totalGitHubPoints:70,database:'isolated SQLite/WAL',wallet:'actual scripted SIWS Ed25519',realOAuth:false,engagementFixtureOnly:true,productionUsersCreated:0,chainTransactions:0}));
+ check('restart preserves completed tasks credentials and points',()=>{assert.equal(service.profile(sessions[0]).points,178);assert.equal(service.profile(sessions[0]).github.starCompleted,3);assert.equal(service.github.complete(sessions[0],normal.q.browser).pointsAwarded,0);assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');});
+ check('restart retains historical retired-task credit byte-for-byte',()=>{assert.equal(service.profile(historical).points,1);assert.equal(service.profile(historical).github.starCompleted,0);assert.equal(JSON.stringify(db.prepare('SELECT * FROM community_points_ledger WHERE wallet=?').all(historical.wallet)),historicalLedger);assert(!service.tasks(historical).tasks.some(t=>t.id==='github_star_explorer_v1'));});
+ console.log(JSON.stringify({passed:true,checks,providerRequests:fetches,githubTasks:4,totalGitHubPoints:53,database:'isolated SQLite/WAL',wallet:'actual scripted SIWS Ed25519',realOAuth:false,engagementFixtureOnly:true,productionUsersCreated:0,chainTransactions:0}));
 }finally{if(server)await new Promise(r=>server.close(r));db.close();await rm(directory,{recursive:true,force:true});}

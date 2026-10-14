@@ -6,7 +6,7 @@ import {GitHubCipher,GitHubProvider,githubError as fail} from './github_provider
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const uid=()=>randomBytes(32).toString('base64url');
-const CONNECT='github_connect_v1',FOLLOW='github_follow_flybrainlabs_v1';
+const CONNECT='github_connect_v1';
 const equal=(a,b)=>typeof a==='string'&&typeof b==='string'&&a.length===b.length&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 export const GITHUB_COOKIE='__Host-fbw-github-flow';
 export function githubCookie(headers){
@@ -39,14 +39,12 @@ export class SocialGitHubService {
     }
   }
   async initialize(){
-    this.manifest=JSON.parse(await readFile(new URL('../config/github-community-tasks-v1.json',import.meta.url),'utf8'));
-    if(this.manifest.schema!=='flybrainlabs-github-community-tasks-v1'||this.manifest.owner!=='flybrainlabs'||this.manifest.repositories.length!==10||new Set(this.manifest.repositories.map(r=>r.name)).size!==10)throw fail('github_targets_invalid',503);
+    this.manifest=JSON.parse(await readFile(new URL('../config/github-community-tasks-v2.json',import.meta.url),'utf8'));
+    if(this.manifest.schema!=='flybrainlabs-github-community-tasks-v2'||this.manifest.owner!=='flybrainlabs'||this.manifest.repositories.length!==3||this.manifest.repositories.map(r=>r.name).join(',')!=='miner,infra,node')throw fail('github_targets_invalid',503);
     this.community.transaction(()=>{
       this.db.prepare("UPDATE social_github_oauth_states SET status='failed',encrypted_verifier=NULL,encrypted_result=NULL,result_code='github_state_expired' WHERE expires_at<=? AND status IN('issued','authorized','exchanging')").run(this.clock());
       const seed=(key,title,description,points,verifier,enabled=1)=>this.db.prepare('INSERT INTO social_tasks VALUES(?,?,?,?,?,?,?,0,1,?,?) ON CONFLICT(task_key) DO NOTHING').run(key,title,description,points,'github',verifier,enabled,this.clock(),this.clock());
       seed(CONNECT,'Connect GitHub','Verify your GitHub identity once with your signed-in wallet.',50,'github_oauth');
-      seed(FOLLOW,'Follow flybrainlabs','Follow the official account yourself, then verify the public relationship.',10,'github_follow');
-      this.db.prepare('INSERT INTO social_github_task_targets VALUES(?,?,NULL,NULL,1,?) ON CONFLICT(task_key) DO NOTHING').run(FOLLOW,'flybrainlabs',this.clock());
       for(const repo of this.manifest.repositories){
         if(!/^[a-z][a-z0-9-]{1,39}$/.test(repo.name)||repo.id!==null&&!/^[1-9][0-9]{0,18}$/.test(repo.id))throw fail('github_targets_invalid',503);
         const key='github_star_'+repo.name+'_v1';seed(key,'Star '+repo.name,repo.description,1,'github_star',Number(!!repo.id));
@@ -56,7 +54,7 @@ export class SocialGitHubService {
       }
     });return this;
   }
-  installed(key){return key===CONNECT||key===FOLLOW||!!this.manifest?.repositories.some(r=>key==='github_star_'+r.name+'_v1');}
+  installed(key){return key===CONNECT||!!this.manifest?.repositories.some(r=>key==='github_star_'+r.name+'_v1');}
   availability(task){
     if(task.category!=='github')return {available:true};
     const target=this.db.prepare('SELECT * FROM social_github_task_targets WHERE task_key=?').get(task.task_key);
@@ -66,7 +64,7 @@ export class SocialGitHubService {
   view(wallet){
     const binding=this.db.prepare('SELECT * FROM social_github_bindings WHERE wallet=?').get(wallet);
     const completions=this.db.prepare("SELECT task_key,points_awarded FROM social_task_completions WHERE wallet=? AND task_key LIKE 'github_%'").all(wallet);
-    return {configured:this.configured,bindingEnabled:this.bindingEnabled,engagementRewardsEnabled:this.engagementEnabled,binding:binding?{userId:binding.github_user_id,login:binding.github_login,avatarUrl:binding.avatar_url,connectedAt:binding.connected_at,status:binding.binding_status,verificationMethod:binding.verification_method}:null,completedTaskIds:completions.map(r=>r.task_key),bindingPointsEarned:completions.find(r=>r.task_key===CONNECT)?.points_awarded||0,pointsEarned:completions.reduce((sum,r)=>sum+r.points_awarded,0),starCompleted:completions.filter(r=>r.task_key.startsWith('github_star_')).length,starTotal:10};
+    return {configured:this.configured,bindingEnabled:this.bindingEnabled,engagementRewardsEnabled:this.engagementEnabled,binding:binding?{userId:binding.github_user_id,login:binding.github_login,avatarUrl:binding.avatar_url,connectedAt:binding.connected_at,status:binding.binding_status,verificationMethod:binding.verification_method}:null,completedTaskIds:completions.map(r=>r.task_key),bindingPointsEarned:completions.find(r=>r.task_key===CONNECT)?.points_awarded||0,pointsEarned:completions.reduce((sum,r)=>sum+r.points_awarded,0),starCompleted:completions.filter(r=>r.task_key.startsWith('github_star_')&&this.installed(r.task_key)).length,starTotal:this.manifest.repositories.length};
   }
   ensureSession(session){
     const live=this.db.prepare('SELECT * FROM mining_v3_sessions WHERE token_hash=?').get(session.token_hash);
