@@ -23,7 +23,7 @@ export function signInMessage(input){
 }
 export class WalletMiningService {
   constructor(config,db,relayer,{connection=null,clock=seconds}={}){
-    if(config.schema!=='flybrainlabs-wallet-mining-config-v3'||!['devnet','localnet'].includes(config.cluster)||!config.origins?.length||config.origins.some(o=>new URL(o).origin!==o)||config.units?.length!==2||config.units.some(u=>! /^[a-f0-9]{64}$/.test(u.goalId)||! /^[a-f0-9]{64}$/.test(u.economicTaskId)||atom(u.rewardAtoms)===0n)||new Set(config.units.map(u=>u.economicTaskId)).size!==2)throw fail('INVALID_CONFIGURATION');
+    if(config.schema!=='flybrainlabs-wallet-mining-config-v3'||!['devnet','localnet'].includes(config.cluster)||!config.origins?.length||config.origins.some(o=>new URL(o).origin!==o)||!Array.isArray(config.units)||config.units.length<1||config.units.length>128||config.units.some(u=>! /^[a-f0-9]{64}$/.test(u.goalId)||! /^[a-f0-9]{64}$/.test(u.economicTaskId)||atom(u.rewardAtoms)===0n)||new Set(config.units.map(u=>u.economicTaskId)).size!==config.units.length||new Set(config.units.map(u=>u.goalId)).size!==config.units.length)throw fail('INVALID_CONFIGURATION');
     const rpc=walletRpcConfiguration(config);
     Object.assign(this,{config,db,relayer,clock});this.connection=connection||new Connection(rpc.upstream,{commitment:'finalized',disableRetryOnRateLimit:true,fetch:(url,options)=>fetch(url,{...options,signal:AbortSignal.timeout(15_000),redirect:'error'})});this.rpcProxy=new WalletRpcProxy(this);this.program=new PublicKey(config.programId);this.a=addresses(this.program);this.active=false;this.chainSnapshot=null;this.requests=new Map();
     if(relayer&&relayer.publicKey.toBase58()!==config.relayer)throw fail('WRONG_RELAYER');
@@ -45,13 +45,14 @@ export class WalletMiningService {
     const stageAddress=new PublicKey(this.config.stage),stageInfo=await this.connection.getAccountInfo(stageAddress,'finalized');if(!stageInfo?.owner.equals(this.program))throw fail('STAGE_UNAVAILABLE',503);
     const stage=decodeMiningStage(stageInfo.data),budget=this.config.units.reduce((n,u)=>n+BigInt(u.rewardAtoms),0n);
     if(hex(stage.policy)!==this.config.policyHash||!this.a.miningStage(stage.id).equals(stageAddress)||stage.budget!==budget||stage.deadline.toString()!==this.config.deadline)throw fail('STAGE_POLICY_MISMATCH',503);
-    let paid=0n,accepted=0n,pending=0n;
+    let paid=0n,accepted=0n,pending=0n;const units=[];
     for(const plan of this.config.units){const address=this.a.unit(unhex(plan.economicTaskId)),info=await this.connection.getAccountInfo(address,'finalized');if(!info?.owner.equals(this.program))throw fail('UNIT_BUDGET_UNAVAILABLE',503);const u=decodeUnit(info.data);
       if(hex(u.economicTask)!==plan.economicTaskId||new PublicKey(u.stage).toBase58()!==this.config.stage||u.amount!==BigInt(plan.rewardAtoms)||u.released)throw fail('UNIT_BUDGET_MISMATCH',503);
       if(u.paid)paid+=u.amount;else if(u.accepted)accepted+=u.amount;else pending+=u.amount;
+      units.push({goalId:plan.goalId,paid:u.paid,accepted:u.accepted,released:u.released});
     }
     if(stage.paid!==paid||stage.acceptedUnpaid!==accepted||stage.pendingAtoms!==pending||stage.remaining+paid+accepted+pending!==budget||BigInt(snapshot.vaults[0].balanceAtoms)<BigInt(snapshot.vaults[0].unallocatedAtoms)+stage.remaining+accepted+pending)throw fail('VAULT_LIABILITY_MISMATCH',503);
-    this.chainSnapshot={snapshot,config:c,stage,asOf:this.clock()};return this.chainSnapshot;
+    this.chainSnapshot={snapshot,config:c,stage,units,asOf:this.clock()};return this.chainSnapshot;
   }
   challenge(origin,body){
     this.checkOrigin(origin);const wallet=new PublicKey(body.address).toBase58();if(wallet!==body.address||!PublicKey.isOnCurve(new PublicKey(wallet).toBytes()))throw fail('INVALID_WALLET');
@@ -203,6 +204,9 @@ export function serve(service,{host='127.0.0.1',port=8789}={}){
 async function main(){
   const file=process.argv[2];if(!file)throw new Error('Usage: wallet_mining_v3.mjs PRIVATE_RUNTIME.json');const config=JSON.parse(await readFile(file,'utf8'));await mkdir(dirname(config.database),{recursive:true,mode:0o700});const db=new DatabaseSync(config.database);await chmod(config.database,0o600);
   const relayer=Keypair.fromSecretKey(Uint8Array.from(JSON.parse(await readFile(config.relayerKeypair,'utf8')))),service=await new WalletMiningService(config,db,relayer).initialize();await service.freezeAdmission();
-  serve(service,{port:config.port||8789});const {runRelayer}=await import('./mining_relayer_v3.mjs');runRelayer(service).catch(()=>{console.error('Mining relayer paused; retained durable outbox');process.exitCode=1;});console.log('Wallet mining V3 listening on loopback; '+config.cluster+' only');
+  serve(service,{port:config.port||8789});const {runRelayer}=await import('./mining_relayer_v3.mjs');runRelayer(service).catch(()=>{console.error('Mining relayer paused; retained durable outbox');process.exitCode=1;});
+  const supplyPath=config.continuousSupplyConfig;
+  if(supplyPath){const {runTaskSupply}=await import('./continuous_task_supply.mjs');runTaskSupply(service,supplyPath).catch(()=>{console.error('Task supply paused; retained catalog and signed publication requests');});}
+  console.log('Wallet mining V3 listening on loopback; '+config.cluster+' only');
 }
 if(process.argv[1]===new URL(import.meta.url).pathname)main().catch(e=>{console.error(e.code||'Wallet mining runtime failed; check private configuration');process.exitCode=1;});
