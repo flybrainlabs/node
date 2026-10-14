@@ -5,6 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {WalletMiningService} from './wallet_mining_v3.mjs';
 import {SocialCommunityService} from './social_community.mjs';
+import {loadGitHubConfig,githubCookie,clearFlowCookie} from './social_github.mjs';
 
 const fail=(code,status=400)=>Object.assign(new Error(code),{code,status});
 const publicPaths=new Set(['/api/social/tasks','/api/social/leaderboard','/api/community/airdrop/allocation','/api/community/rules','/api/social/health']);
@@ -20,6 +21,17 @@ export function serveSocial(service,{host='127.0.0.1',port=8791}={}){
     try{
       const url=new URL(req.url,'http://localhost'),path=url.pathname,origin=req.headers.origin,mutation=req.method==='POST';
       res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');res.setHeader('X-Content-Type-Options','nosniff');
+      if(path==='/api/auth/github/callback'&&req.method==='GET'){
+        // The OAuth redirect is authenticated by one-use state and a private cookie.
+        // Finalization subsequently requires the original Bearer/CSRF wallet session.
+        let status='failed',code='github_unavailable';
+        try{const result=await service.github.callback(url.searchParams,githubCookie(req.headers));status=result.status;}
+        catch(error){code=/^github_[a-z_]+$/.test(error.code||'')?error.code:'github_unavailable';}
+        const destination=new URL('/social/',service.github.provider.callbackUrl);
+        destination.searchParams.set('github',status);if(status==='failed')destination.searchParams.set('github_error',code);
+        if(status!=='ready')res.setHeader('Set-Cookie',clearFlowCookie());
+        res.setHeader('Referrer-Policy','no-referrer');res.writeHead(303,{Location:destination.href});res.end();return;
+      }
       if(origin){service.auth.checkOrigin(origin);res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');}
       if(req.method==='OPTIONS'){
         service.auth.checkOrigin(origin);if(!['GET','POST'].includes(req.headers['access-control-request-method'])||(req.headers['access-control-request-headers']||'').toLowerCase().split(',').some(h=>h.trim()&&!['content-type','authorization','x-mining-csrf'].includes(h.trim())))throw fail('CORS_REJECTED',403);
@@ -30,9 +42,13 @@ export function serveSocial(service,{host='127.0.0.1',port=8791}={}){
       let session=null;if(!publicView||req.headers.authorization)session=service.auth.authenticate(origin,req.headers,mutation);
       let body={};if(mutation){if(req.headers['content-type']?.split(';')[0]!=='application/json')throw fail('content_type_required',415);const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>32768)throw fail('body_limit',413);chunks.push(chunk);}try{body=JSON.parse(Buffer.concat(chunks).toString());}catch{throw fail('invalid_json');}if(!body||Array.isArray(body)||typeof body!=='object')throw fail('invalid_request');}
       let result;
-      if(path==='/api/social/health'&&!mutation)result={project:'flybrainlabs',service:'community',schemaVersion:2,tokenExecutionEnabled:false};
+      if(path==='/api/social/health'&&!mutation)result={project:'flybrainlabs',service:'community',schemaVersion:3,githubConfigured:service.github.configured,githubEngagementRewardsEnabled:service.github.engagementEnabled,tokenExecutionEnabled:false};
       else if(path==='/api/social/tasks'&&!mutation)result=service.tasks(session);
       else if(path==='/api/social/profile'&&!mutation)result=service.profile(session);
+      else if(path==='/api/social/github/start'&&mutation){if(Object.keys(body).length)throw fail('invalid_request');const started=service.github.start(session);res.setHeader('Set-Cookie',started.cookie);result={authorizeUrl:started.authorizeUrl,expiresAt:started.expiresAt};}
+      else if(path==='/api/social/github/complete'&&mutation){if(Object.keys(body).length)throw fail('invalid_request');result=service.github.complete(session,githubCookie(req.headers));res.setHeader('Set-Cookie',clearFlowCookie());}
+      else if(path==='/api/social/github/binding'&&!mutation)result=service.github.view(session.wallet);
+      else if(path==='/api/social/github/verify'&&mutation)result=await service.github.verify(session,body);
       else if(path==='/api/social/register'&&mutation)result=service.register(session,body);
       else if(path==='/api/social/invite')result=mutation?service.createInvite(session):service.inviteView(session);
       else if(path==='/api/social/check-in'&&mutation)result=service.checkIn(session);
@@ -58,14 +74,15 @@ export function serveSocial(service,{host='127.0.0.1',port=8791}={}){
         result={...content,exportedAt:service.clock(),tokenExecutionEnabled:false};
       }else throw fail('not_found',404);
       res.end(JSON.stringify(result));
-    }catch(error){res.writeHead(error.status||503);res.end(JSON.stringify({code:error.status?error.code:'retryable_store_error',message:error.status?error.code:'Community storage is temporarily unavailable; no success is assumed.'}));}
+    }catch(error){if(error.retryAfter)res.setHeader('Retry-After',String(error.retryAfter));res.writeHead(error.status||503);res.end(JSON.stringify({code:error.status?error.code:'retryable_store_error',message:error.status?error.code:'Community storage is temporarily unavailable; no success is assumed.'}));}
   });server.headersTimeout=10000;server.requestTimeout=20000;server.listen(port,host);return server;
 }
 async function main(){
   const file=process.argv[2];if(!file)throw new Error('Private runtime configuration is required');
   const config=JSON.parse(await readFile(file,'utf8')),allocation=JSON.parse(await readFile(new URL('../config/community-allocation-v1.json',import.meta.url),'utf8'));
   const db=new DatabaseSync(config.database),auth=new WalletMiningService(config,db,null);
-  const service=await new SocialCommunityService(auth,allocation,{adminWallets:config.communityAdminWallets||[config.project]}).initialize();
+  const githubConfig=await loadGitHubConfig();
+  const service=await new SocialCommunityService(auth,allocation,{adminWallets:config.communityAdminWallets||[config.project],githubConfig}).initialize();
   const server=serveSocial(service,{port:8791});await new Promise((resolve,reject)=>{server.once('listening',()=>resolve(undefined));server.once('error',reject);});console.log('flybrainlabs community service listening on loopback; existing wallet sessions reused');
 }
 if(process.argv[1]===new URL(import.meta.url).pathname)main().catch(error=>{console.error('Community startup failed: '+(error.code||error.name||'unknown')+'; check private configuration and migration history');process.exitCode=1;});

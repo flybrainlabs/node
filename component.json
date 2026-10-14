@@ -70,7 +70,13 @@
     "tools/wallet_rpc_v3.mjs": "tools/wallet_rpc_v3.mjs",
     "tests/wallet_rpc_v3.mjs": "tests/wallet_rpc_v3.mjs",
     "config/social-community-v2.sql": "config/social-community-v2.sql",
-    "tests/social_daily_invites.mjs": "tests/social_daily_invites.mjs"
+    "tests/social_daily_invites.mjs": "tests/social_daily_invites.mjs",
+    "config/social-community-v3.sql": "config/social-community-v3.sql",
+    "config/github-community-tasks-v1.json": "config/github-community-tasks-v1.json",
+    "tools/github_provider.mjs": "tools/github_provider.mjs",
+    "tools/social_github.mjs": "tools/social_github.mjs",
+    "tests/social_github.mjs": "tests/social_github.mjs",
+    "tests/github_provider.mjs": "tests/github_provider.mjs"
   },
   "project": "flybrainlabs"
 }

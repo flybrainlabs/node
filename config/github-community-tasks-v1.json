@@ -1,0 +1,56 @@
+{
+  "schema": "flybrainlabs-github-community-tasks-v1",
+  "owner": "flybrainlabs",
+  "repositories": [
+    {
+      "name": "miner",
+      "id": "1415404414",
+      "description": "Browser computation and recoverable mining results."
+    },
+    {
+      "name": "explorer",
+      "id": "1415404602",
+      "description": "Public computation records and verification views."
+    },
+    {
+      "name": "contracts",
+      "id": "1415404957",
+      "description": "Versioned Solana programs and contract interfaces."
+    },
+    {
+      "name": "protocol",
+      "id": "1415404808",
+      "description": "Scientific commitments and computation protocols."
+    },
+    {
+      "name": "node",
+      "id": "1415404215",
+      "description": "Node services and durable community verification."
+    },
+    {
+      "name": "sdk",
+      "id": "1415405137",
+      "description": "Client libraries for project APIs and receipts."
+    },
+    {
+      "name": "infra",
+      "id": "1415405299",
+      "description": "Reproducible assembly and deployment tools."
+    },
+    {
+      "name": "research",
+      "id": "1415405479",
+      "description": "Scientific model and reproducibility workflows."
+    },
+    {
+      "name": "docs",
+      "id": "1415405657",
+      "description": "Project guides and technical documentation."
+    },
+    {
+      "name": "examples",
+      "id": "1418477860",
+      "description": "Public SDK and protocol integration examples."
+    }
+  ]
+}

@@ -35,7 +35,7 @@ db.prepare('INSERT INTO community_points_ledger(wallet,points_delta,source_type,
 db.prepare('UPDATE community_profiles SET show_x=1 WHERE wallet=?').run(legacy.wallet);
 let service=await new SocialCommunityService(auth,allocation,{provider}).initialize();
 try{
- check('v2 retains v1 earned points and migration hash',()=>{assert.equal(service.profile(legacy).points,100);assert.equal(db.prepare('SELECT COUNT(*) n FROM social_schema_migrations').get().n,2);assert.equal(service.tasks().tasks.length,3);assert.equal(service.tasks().tasks.find(t=>t.id===allocation.initialTask).rewardPoints,10);assert.equal(db.prepare('SELECT show_x FROM community_profiles WHERE wallet=?').get(legacy.wallet).show_x,0);});
+ check('v2 retains v1 earned points and migration hash',()=>{assert.equal(service.profile(legacy).points,100);assert.equal(db.prepare('SELECT COUNT(*) n FROM social_schema_migrations').get().n,3);assert.equal(service.tasks().tasks.filter(t=>t.category!=='github').length,3);assert.equal(service.tasks().tasks.find(t=>t.id===allocation.initialTask).rewardPoints,10);assert.equal(db.prepare('SELECT show_x FROM community_profiles WHERE wallet=?').get(legacy.wallet).show_x,0);});
  const inviter=login();service.register(inviter);const link=service.createInvite(inviter);
  check('stable unlimited invitation link with no reward for generating it',()=>{assert.match(link.code,/^[a-f0-9]{32}$/);assert.equal(service.createInvite(inviter).code,link.code);assert.equal(link.limit,null);assert.equal(service.profile(inviter).points,0);});
  const invited=login();service.register(invited,{inviteCode:link.code});
