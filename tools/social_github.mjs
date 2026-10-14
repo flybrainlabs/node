@@ -29,6 +29,7 @@ export class SocialGitHubService {
     this.community=community;this.db=community.db;this.clock=()=>community.clock();this.config=config;
     this.configured=!!(config.clientId&&config.clientSecret&&config.encryptionKey);
     this.bindingEnabled=this.configured&&config.bindingEnabled!==false;
+    this.starVerificationEnabled=this.configured&&config.starVerificationEnabled!==false;
     this.engagementEnabled=this.configured&&config.engagementRewardsEnabled===true;
     this.provider=provider||new GitHubProvider(config);this.cipher=this.configured?new GitHubCipher(config.encryptionKey):null;
     this.refreshes=new Map();this.manifest=null;
@@ -58,13 +59,15 @@ export class SocialGitHubService {
   availability(task){
     if(task.category!=='github')return {available:true};
     const target=this.db.prepare('SELECT * FROM social_github_task_targets WHERE task_key=?').get(task.task_key);
-    const code=!this.configured?'github_not_configured':task.task_key===CONNECT?(!this.bindingEnabled?'github_binding_paused':null):!this.engagementEnabled?'github_engagement_paused':!target?.verified_public?'github_repository_unavailable':null;
-    return {available:!code,unavailableCode:code,targetUrl:target?'https://github.com/'+target.owner+(target.repository?'/'+target.repository:''):null,repository:target?.repository||null,repositoryId:target?.repository_id||null};
+    const code=!this.configured?'github_not_configured':task.task_key===CONNECT?(!this.bindingEnabled?'github_binding_paused':null):!this.starVerificationEnabled?'github_verification_paused':!target?.verified_public?'github_repository_unavailable':null;
+    return {available:!code,unavailableCode:code,rewardsAvailable:!code&&(task.task_key===CONNECT||this.engagementEnabled),targetUrl:target?'https://github.com/'+target.owner+(target.repository?'/'+target.repository:''):null,repository:target?.repository||null,repositoryId:target?.repository_id||null};
   }
   view(wallet){
     const binding=this.db.prepare('SELECT * FROM social_github_bindings WHERE wallet=?').get(wallet);
     const completions=this.db.prepare("SELECT task_key,points_awarded FROM social_task_completions WHERE wallet=? AND task_key LIKE 'github_%'").all(wallet);
-    return {configured:this.configured,bindingEnabled:this.bindingEnabled,engagementRewardsEnabled:this.engagementEnabled,binding:binding?{userId:binding.github_user_id,login:binding.github_login,avatarUrl:binding.avatar_url,connectedAt:binding.connected_at,status:binding.binding_status,verificationMethod:binding.verification_method}:null,completedTaskIds:completions.map(r=>r.task_key),bindingPointsEarned:completions.find(r=>r.task_key===CONNECT)?.points_awarded||0,pointsEarned:completions.reduce((sum,r)=>sum+r.points_awarded,0),starCompleted:completions.filter(r=>r.task_key.startsWith('github_star_')&&this.installed(r.task_key)).length,starTotal:this.manifest.repositories.length};
+    const verifiedTaskIds=binding?this.db.prepare("SELECT DISTINCT task_key FROM social_github_verification_audit WHERE wallet=? AND github_user_id=? AND result_code='star_verified' ORDER BY task_key").all(wallet,binding.github_user_id).map(r=>r.task_key).filter(key=>this.installed(key)):[];
+    const starCompleted=new Set([...completions.map(r=>r.task_key),...verifiedTaskIds].filter(key=>key.startsWith('github_star_')&&this.installed(key))).size;
+    return {configured:this.configured,bindingEnabled:this.bindingEnabled,starVerificationEnabled:this.starVerificationEnabled,engagementRewardsEnabled:this.engagementEnabled,binding:binding?{userId:binding.github_user_id,login:binding.github_login,avatarUrl:binding.avatar_url,connectedAt:binding.connected_at,status:binding.binding_status,verificationMethod:binding.verification_method}:null,completedTaskIds:completions.map(r=>r.task_key),verifiedTaskIds,bindingPointsEarned:completions.find(r=>r.task_key===CONNECT)?.points_awarded||0,pointsEarned:completions.reduce((sum,r)=>sum+r.points_awarded,0),starCompleted,starTotal:this.manifest.repositories.length};
   }
   ensureSession(session){
     const live=this.db.prepare('SELECT * FROM mining_v3_sessions WHERE token_hash=?').get(session.token_hash);
@@ -178,12 +181,13 @@ export class SocialGitHubService {
     this.ensureSession(session);
     const task=this.db.prepare('SELECT * FROM social_tasks WHERE task_key=?').get(body.taskId);
     if(this.db.prepare('SELECT 1 FROM social_task_completions WHERE wallet=? AND task_key=?').get(session.wallet,task.task_key))return {state:'completed',pointsAwarded:0,profile:this.community.profile(session)};
-    // The operational gate is independent of editable task metadata.
-    this.requireConfigured();if(!this.engagementEnabled)throw fail('github_engagement_paused',409);
+    // Relationship checks and reward authorization are independent of task metadata.
+    this.requireConfigured();if(!this.starVerificationEnabled)throw fail('github_verification_paused',409);
     const availability=this.availability(task);if(!availability.available)throw fail(availability.unavailableCode,409);
     if(!task.enabled)throw fail('task_paused',409);
     const binding=this.db.prepare('SELECT * FROM social_github_bindings WHERE wallet=?').get(session.wallet);
     if(!binding)throw fail('github_binding_required',409);
+    if(!this.engagementEnabled&&this.view(session.wallet).verifiedTaskIds.includes(task.task_key))return {state:'verified',pointsAwarded:0,rewardsAvailable:false,profile:this.community.profile(session)};
     const target=this.db.prepare('SELECT * FROM social_github_task_targets WHERE task_key=?').get(task.task_key);
     this.community.transaction(()=>{
       const lock=this.db.prepare('SELECT * FROM social_github_verification_locks WHERE wallet=? AND task_key=?').get(session.wallet,task.task_key);
@@ -202,9 +206,11 @@ export class SocialGitHubService {
         const current=this.community.enabledTask(task.task_key);if(current.revision!==task.revision||!this.availability(current).available)throw fail('task_paused',409);
         this.ensureSession(session);
         this.db.prepare("UPDATE social_github_bindings SET github_login=?,avatar_url=?,binding_status='active',updated_at=? WHERE wallet=? AND github_user_id=?").run(identity.login,identity.avatarUrl,this.clock(),session.wallet,identity.id);
-        const points=this.award(session,task,identity.id,'github:'+identity.id+':'+(target.repository_id||'follow:flybrainlabs'),availability.targetUrl,target.repository_id);
+        const evidence='github:'+identity.id+':'+target.repository_id;
+        const points=this.engagementEnabled?this.award(session,task,identity.id,evidence,availability.targetUrl,target.repository_id):0;
+        if(!this.engagementEnabled)this.record(session.wallet,task.task_key,'star_verified',identity.id,target.repository_id,hash(evidence));
         this.db.prepare('UPDATE social_github_verification_locks SET lease_until=0,retry_at=0,result_code=NULL WHERE wallet=? AND task_key=?').run(session.wallet,task.task_key);
-        return {state:'completed',pointsAwarded:points,profile:this.community.profile(session)};
+        return {state:this.engagementEnabled?'completed':'verified',pointsAwarded:points,rewardsAvailable:this.engagementEnabled,profile:this.community.profile(session)};
       });
     }catch(error){
       this.community.transaction(()=>{
@@ -217,6 +223,6 @@ export class SocialGitHubService {
   }
   adminOverview(){
     const totals=this.db.prepare("SELECT task_key,COUNT(*) completions,SUM(points_awarded) points FROM social_task_completions WHERE task_key LIKE 'github_%' GROUP BY task_key ORDER BY task_key").all();
-    return {configured:this.configured,bindingEnabled:this.bindingEnabled,engagementRewardsEnabled:this.engagementEnabled,callbackUrl:this.configured?this.provider.callbackUrl:null,bindingCount:this.db.prepare('SELECT COUNT(*) n FROM social_github_bindings').get().n,pointsAwarded:totals.reduce((sum,r)=>sum+r.points,0),tasks:totals,verificationResults:this.db.prepare('SELECT result_code,COUNT(*) count FROM social_github_verification_audit GROUP BY result_code ORDER BY result_code').all(),recentFailures:this.db.prepare("SELECT wallet,github_user_id,task_key,result_code,repository_id,created_at FROM social_github_verification_audit WHERE result_code NOT IN('completed','github_authorized') ORDER BY sequence DESC LIMIT 50").all()};
+    return {configured:this.configured,bindingEnabled:this.bindingEnabled,starVerificationEnabled:this.starVerificationEnabled,engagementRewardsEnabled:this.engagementEnabled,callbackUrl:this.configured?this.provider.callbackUrl:null,bindingCount:this.db.prepare('SELECT COUNT(*) n FROM social_github_bindings').get().n,pointsAwarded:totals.reduce((sum,r)=>sum+r.points,0),tasks:totals,verificationResults:this.db.prepare('SELECT result_code,COUNT(*) count FROM social_github_verification_audit GROUP BY result_code ORDER BY result_code').all(),recentFailures:this.db.prepare("SELECT wallet,github_user_id,task_key,result_code,repository_id,created_at FROM social_github_verification_audit WHERE result_code NOT IN('completed','github_authorized','star_verified') ORDER BY sequence DESC LIMIT 50").all()};
   }
 }

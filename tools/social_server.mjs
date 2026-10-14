@@ -42,7 +42,7 @@ export function serveSocial(service,{host='127.0.0.1',port=8791}={}){
       let session=null;if(!publicView||req.headers.authorization)session=service.auth.authenticate(origin,req.headers,mutation);
       let body={};if(mutation){if(req.headers['content-type']?.split(';')[0]!=='application/json')throw fail('content_type_required',415);const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>32768)throw fail('body_limit',413);chunks.push(chunk);}try{body=JSON.parse(Buffer.concat(chunks).toString());}catch{throw fail('invalid_json');}if(!body||Array.isArray(body)||typeof body!=='object')throw fail('invalid_request');}
       let result;
-      if(path==='/api/social/health'&&!mutation)result={project:'flybrainlabs',service:'community',schemaVersion:3,githubConfigured:service.github.configured,githubEngagementRewardsEnabled:service.github.engagementEnabled,tokenExecutionEnabled:false};
+      if(path==='/api/social/health'&&!mutation)result={project:'flybrainlabs',service:'community',schemaVersion:3,githubConfigured:service.github.configured,githubStarVerificationEnabled:service.github.starVerificationEnabled,githubEngagementRewardsEnabled:service.github.engagementEnabled,tokenExecutionEnabled:false};
       else if(path==='/api/social/tasks'&&!mutation)result=service.tasks(session);
       else if(path==='/api/social/profile'&&!mutation)result=service.profile(session);
       else if(path==='/api/social/github/start'&&mutation){if(Object.keys(body).length)throw fail('invalid_request');const started=service.github.start(session);res.setHeader('Set-Cookie',started.cookie);result={authorizeUrl:started.authorizeUrl,expiresAt:started.expiresAt};}
