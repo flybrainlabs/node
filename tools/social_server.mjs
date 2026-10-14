@@ -30,9 +30,14 @@ export function serveSocial(service,{host='127.0.0.1',port=8791}={}){
       let session=null;if(!publicView||req.headers.authorization)session=service.auth.authenticate(origin,req.headers,mutation);
       let body={};if(mutation){if(req.headers['content-type']?.split(';')[0]!=='application/json')throw fail('content_type_required',415);const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>32768)throw fail('body_limit',413);chunks.push(chunk);}try{body=JSON.parse(Buffer.concat(chunks).toString());}catch{throw fail('invalid_json');}if(!body||Array.isArray(body)||typeof body!=='object')throw fail('invalid_request');}
       let result;
-      if(path==='/api/social/health'&&!mutation)result={project:'flybrainlabs',service:'community',schemaVersion:1,tokenExecutionEnabled:false};
+      if(path==='/api/social/health'&&!mutation)result={project:'flybrainlabs',service:'community',schemaVersion:2,tokenExecutionEnabled:false};
       else if(path==='/api/social/tasks'&&!mutation)result=service.tasks(session);
       else if(path==='/api/social/profile'&&!mutation)result=service.profile(session);
+      else if(path==='/api/social/register'&&mutation)result=service.register(session,body);
+      else if(path==='/api/social/invite')result=mutation?service.createInvite(session):service.inviteView(session);
+      else if(path==='/api/social/check-in'&&mutation)result=service.checkIn(session);
+      else if(path==='/api/social/daily-x/challenge')result=mutation?service.createDailyChallenge(session):service.dailyChallengeView(session);
+      else if(path==='/api/social/daily-x/verify'&&mutation)result=await service.verifyDailyPost(session,body);
       else if(path==='/api/social/profile/visibility'&&mutation)result=service.setVisibility(session,body);
       else if(path==='/api/social/x/challenge')result=mutation?service.createChallenge(session):service.challengeView(session);
       else if(path==='/api/social/x/verify'&&mutation)result=await service.verifyPost(session,body);

@@ -68,7 +68,9 @@
     "tests/social_community.mjs": "tests/social_community.mjs",
     "tests/social_browser_server.mjs": "tests/social_browser_server.mjs",
     "tools/wallet_rpc_v3.mjs": "tools/wallet_rpc_v3.mjs",
-    "tests/wallet_rpc_v3.mjs": "tests/wallet_rpc_v3.mjs"
+    "tests/wallet_rpc_v3.mjs": "tests/wallet_rpc_v3.mjs",
+    "config/social-community-v2.sql": "config/social-community-v2.sql",
+    "tests/social_daily_invites.mjs": "tests/social_daily_invites.mjs"
   },
   "project": "flybrainlabs"
 }

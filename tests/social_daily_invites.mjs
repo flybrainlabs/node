@@ -1,0 +1,96 @@
+// Actual SQLite transactions and Ed25519 logins; evidence stays in isolated fixtures.
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {Keypair} from '@solana/web3.js';
+import {createPrivateKey,createHash,sign,randomUUID} from 'node:crypto';
+import {readFile,mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {WalletMiningService} from '../tools/wallet_mining_v3.mjs';
+import {SocialCommunityService,maskWallet} from '../tools/social_community.mjs';
+import {XPublicVerificationProvider} from '../tools/x_public_verification.mjs';
+import {serveSocial} from '../tools/social_server.mjs';
+
+const directory=await mkdtemp(join(tmpdir(),'community-v2-')),origin='https://flybrain.work',allocation=JSON.parse(await readFile('config/community-allocation-v1.json'));
+const admin=Keypair.generate(),config={...JSON.parse(await readFile('web/data/wallet-mining-v3.json')),origins:[origin],project:admin.publicKey.toBase58(),enabled:false};
+let now=1791954000,checks=[],db=new DatabaseSync(join(directory,'state.sqlite')),server;
+let auth=await new WalletMiningService(config,db,null,{clock:()=>now}).initialize();
+const login=(key=Keypair.generate())=>{
+ const wallet=key.publicKey.toBase58(),q=auth.challenge(origin,{address:wallet}),privateKey=createPrivateKey({key:Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),key.secretKey.subarray(0,32)]),format:'der',type:'pkcs8'});
+ const out=auth.login(origin,{address:wallet,nonce:q.input.nonce,signedMessage:q.message,signature:sign(null,Buffer.from(q.message),privateKey).toString('base64')});
+ return {...auth.authenticate(origin,{authorization:'Bearer '+out.token,'x-mining-csrf':out.csrfToken},true),headers:{Origin:origin,Authorization:'Bearer '+out.token,'X-Mining-CSRF':out.csrfToken,'Content-Type':'application/json'},key};
+};
+const legacy=login(),operator=login(admin),provider=new XPublicVerificationProvider(),fixtures=new Map();let sequence=0;
+provider.fetcher=async url=>{const parsed=provider.parsePostUrl(url.searchParams.get('url')),f=fixtures.get(parsed.postId);if(f instanceof Error)throw f;return new Response(JSON.stringify(f));};
+const post=(seconds=now)=>(((BigInt(seconds)*1000n-1288834974657n)<<22n)+BigInt(++sequence)).toString();
+const evidence=(q,username,id)=>({type:'rich',version:'1.0',provider_name:'Twitter',author_url:'https://x.com/'+username,author_name:username,html:'<blockquote class="twitter-tweet"><p lang="en">Original contribution '+q.code+'</p><a href="https://x.com/'+username+'/status/'+id+'">Date</a></blockquote>'});
+const check=(name,fn)=>{fn();checks.push(name);};
+const verifyIdentity=async(session,username)=>{const q=service.createChallenge(session).challenge,id=post();fixtures.set(id,evidence(q,username,id));return service.verifyPost(session,{challengeId:q.id,postUrl:'https://x.com/'+username+'/status/'+id});};
+const verifyDaily=async(session,username,q=service.createDailyChallenge(session).challenge,id=post())=>{fixtures.set(id,evidence(q,username,id));return service.verifyDailyPost(session,{challengeId:q.id,postUrl:'https://x.com/'+username+'/status/'+id});};
+// A genuine v1 ledger is upgraded without rewriting its earned receipt.
+const sql=await readFile('config/social-community-v1.sql','utf8');db.exec(sql);
+db.prepare('INSERT INTO social_schema_migrations VALUES(1,?,?,?)').run('social-community-v1',createHash('sha256').update(sql).digest('hex'),now-100);
+db.prepare('INSERT INTO social_tasks VALUES(?,?,?,?,?,?,1,0,1,?,?)').run(allocation.initialTask,'Connect X Identity','Verify control of your X account and link it to your wallet.',100,'identity','x_public_challenge',now-100,now-100);
+db.prepare('INSERT INTO community_points_ledger(wallet,points_delta,source_type,source_id,task_key,idempotency_key,public_description,private_reason,actor,created_at) VALUES(?,100,?,?,?,?,?,?,?,?)').run(legacy.wallet,'verified_task','legacy-receipt',allocation.initialTask,'legacy-receipt','X Identity Verified','Historical verified contribution','legacy',now-100);
+db.prepare('UPDATE community_profiles SET show_x=1 WHERE wallet=?').run(legacy.wallet);
+let service=await new SocialCommunityService(auth,allocation,{provider}).initialize();
+try{
+ check('v2 retains v1 earned points and migration hash',()=>{assert.equal(service.profile(legacy).points,100);assert.equal(db.prepare('SELECT COUNT(*) n FROM social_schema_migrations').get().n,2);assert.equal(service.tasks().tasks.length,3);assert.equal(service.tasks().tasks.find(t=>t.id===allocation.initialTask).rewardPoints,10);assert.equal(db.prepare('SELECT show_x FROM community_profiles WHERE wallet=?').get(legacy.wallet).show_x,0);});
+ const inviter=login();service.register(inviter);const link=service.createInvite(inviter);
+ check('stable unlimited invitation link with no reward for generating it',()=>{assert.match(link.code,/^[a-f0-9]{32}$/);assert.equal(service.createInvite(inviter).code,link.code);assert.equal(link.limit,null);assert.equal(service.profile(inviter).points,0);});
+ const invited=login();service.register(invited,{inviteCode:link.code});
+ check('registration alone does not award a referral',()=>{assert.equal(service.inviteView(inviter).registered,1);assert.equal(service.profile(inviter).points,0);});
+ const identity=await verifyIdentity(invited,'InvitedOne');
+ check('X completion atomically awards 10 to invitee and 10 to inviter',()=>{assert.equal(identity.pointsAwarded,10);assert.equal(service.profile(invited).points,10);assert.equal(service.profile(inviter).points,10);assert.equal(service.inviteView(inviter).verified,1);});
+ const completed=db.prepare('SELECT id FROM social_x_challenges WHERE wallet=?').get(invited.wallet);
+ await service.verifyPost(invited,{challengeId:completed.id,postUrl:'https://x.com/InvitedOne/status/'+post()});service.register(invited,{inviteCode:link.code});
+ check('repeat registration and verification cannot reward the inviter twice',()=>{assert.equal(service.inviteView(inviter).pointsEarned,10);assert.equal(db.prepare('SELECT COUNT(*) n FROM community_referral_rewards').get().n,1);});
+ const anotherInviter=login();service.register(anotherInviter);const otherLink=service.createInvite(anotherInviter);service.register(invited,{inviteCode:otherLink.code});service.register(legacy,{inviteCode:link.code});
+ check('first attribution is fixed and legacy accounts cannot be retroactively invited',()=>{assert.equal(service.inviteView(anotherInviter).registered,0);assert.equal(service.inviteView(inviter).registered,1);assert.throws(()=>db.prepare('UPDATE community_registrations SET invite_code=NULL').run());});
+ check('invalid invite leaves registration unconsumed for a valid retry',()=>{const s=login();assert.throws(()=>service.register(s,{inviteCode:'f'.repeat(32)}),e=>e.code==='invalid_invite');assert.equal(db.prepare('SELECT 1 FROM community_registrations WHERE wallet=?').get(s.wallet),undefined);service.register(s,{inviteCode:link.code});});
+ const conflict=login();service.register(conflict,{inviteCode:link.code});const conflictResult=await verifyIdentity(conflict,'InvitedOne');
+ check('a previously rewarded X identity cannot qualify another registration',()=>{assert.equal(conflictResult.code,'username_conflict');assert.equal(service.profile(conflict).points,0);assert.equal(service.inviteView(inviter).verified,1);});
+ const checked=service.checkIn(invited);service.checkIn(invited);service.checkIn(invited);
+ check('one authenticated daily check-in and one ledger reward',()=>{assert.equal(checked.pointsAwarded,1);assert.equal(service.profile(invited).points,11);assert.equal(service.profile(invited).daily.checkIn,1);});
+ check('check-in and invite identities are session scoped',()=>{assert.throws(()=>service.createDailyChallenge(inviter),e=>e.code==='x_binding_required');assert.throws(()=>service.setVisibility(invited,{showX:true}),e=>e.code==='public_identity_disabled');});
+ let q=service.createDailyChallenge(invited).challenge;
+ const wrong=await verifyDaily(invited,'SomeoneElse',q);
+ check('daily post author must be the bound X author',()=>{assert.equal(wrong.code,'post_author_mismatch');assert.equal(service.profile(invited).daily.xPosts,0);});
+ q=service.createDailyChallenge(invited).challenge;const old=await verifyDaily(invited,'InvitedOne',q,post(now-86400));
+ check('historical post IDs cannot earn current daily points',()=>{assert.equal(old.code,'post_not_today');assert.equal(service.profile(invited).points,11);});
+ q=service.createDailyChallenge(invited).challenge;const dailyId=post(),body={challengeId:q.id,postUrl:'https://x.com/InvitedOne/status/'+dailyId};fixtures.set(dailyId,evidence(q,'InvitedOne',dailyId));
+ const race=await Promise.all([service.verifyDailyPost(invited,body),service.verifyDailyPost(invited,body)]);await service.verifyDailyPost(invited,body);
+ check('concurrent and repeated post verification credits one slot',()=>{assert(race.some(r=>r.state==='completed'));assert.equal(service.profile(invited).daily.xPosts,1);assert.equal(service.profile(invited).points,12);});
+ now+=301;q=service.createDailyChallenge(invited).challenge;const reused=await verifyDaily(invited,'InvitedOne',q,dailyId);
+ check('a used post cannot be recycled for another daily slot',()=>{assert.equal(reused.code,'post_not_today');assert.equal(service.profile(invited).daily.xPosts,1);});
+ q=service.createDailyChallenge(invited).challenge;const heldId=post();fixtures.set(heldId,new Error('Isolated unavailable evidence'));
+ const held=await service.verifyDailyPost(invited,{challengeId:q.id,postUrl:'https://x.com/InvitedOne/status/'+heldId});
+ check('provider outage creates durable daily evidence review with no points',()=>{assert.equal(held.state,'needs_review');assert(service.adminOverview(operator).reviews.some(r=>r.kind==='daily_x'));assert.equal(service.profile(invited).daily.xPosts,1);});
+ service.manualReview(login(admin),{challengeId:q.id,authorUsername:'InvitedOne',originalBody:'Reviewed original '+q.code,confirmedOriginalAuthor:true,requestId:randomUUID(),reason:'Original daily public post and bound author verified in isolated fixture'});
+ check('authorized daily evidence review obeys the same count and author checks',()=>{assert.equal(service.profile(invited).daily.xPosts,2);assert.equal(service.profile(invited).points,13);});
+ now+=301;q=service.createDailyChallenge(invited).challenge;db.exec("CREATE TRIGGER injected_daily_failure BEFORE INSERT ON social_repeat_completions BEGIN SELECT RAISE(ABORT,'injected failure');END");
+ const failed=await verifyDaily(invited,'InvitedOne',q);db.exec('DROP TRIGGER injected_daily_failure');
+ check('storage failure rolls back post-use ledger and daily slot together',()=>{assert.equal(failed.state,'needs_review');assert.equal(service.profile(invited).daily.xPosts,2);assert.equal(service.profile(invited).points,13);});
+ const third=await verifyDaily(invited,'InvitedOne');
+ check('three daily posts credit three points and the fourth is blocked',()=>{assert.equal(third.pointsAwarded,1);assert.equal(service.profile(invited).points,14);assert.throws(()=>service.createDailyChallenge(invited),e=>e.code==='daily_limit_reached');assert.equal(service.tasks(invited).tasks.find(t=>t.id==='daily_x_post_v1').status,'completed');});
+ const currentRanking=service.leaderboard();
+ check('public payload has no full wallet or X username',()=>{assert(currentRanking.items.every(i=>i.username===null&&i.wallet.includes('********')));assert(!JSON.stringify(currentRanking).includes(invited.wallet));assert(!JSON.stringify(currentRanking).includes('InvitedOne'));assert.equal(maskWallet(invited.wallet).length,invited.wallet.length);});
+ const nextDay=(Math.floor(now/86400)+1)*86400;now=nextDay;const fresh=login(invited.key);service.checkIn(fresh);await verifyDaily(fresh,'InvitedOne');
+ check('UTC boundary resets both limits and allows next-day contributions',()=>{assert.equal(service.profile(fresh).daily.checkIn,1);assert.equal(service.profile(fresh).daily.xPosts,1);assert.equal(service.profile(fresh).points,16);});
+ const additional=login();service.register(additional,{inviteCode:link.code});
+ const referredChallenge=service.createChallenge(additional).challenge,referredPost=post();fixtures.set(referredPost,evidence(referredChallenge,'InvitedTwo',referredPost));
+ db.exec("CREATE TRIGGER injected_referral_failure BEFORE INSERT ON community_points_ledger WHEN NEW.source_type='referral' BEGIN SELECT RAISE(ABORT,'injected referral failure');END");
+ await service.verifyPost(additional,{challengeId:referredChallenge.id,postUrl:'https://x.com/InvitedTwo/status/'+referredPost});db.exec('DROP TRIGGER injected_referral_failure');
+ check('referral credit failure rolls back both wallets and the X binding',()=>{assert.equal(service.profile(additional).points,0);assert.equal(service.profile(additional).x,null);assert.equal(service.inviteView(inviter).verified,1);assert.equal(service.profile(inviter).points,10);});
+ await service.verifyPost(additional,{challengeId:referredChallenge.id,postUrl:'https://x.com/InvitedTwo/status/'+referredPost});
+ check('same invitation accepts additional distinct registrations without a count cap',()=>{assert.equal(service.profile(additional).points,10);assert.equal(service.inviteView(inviter).verified,2);assert.equal(service.profile(inviter).points,20);assert.equal(service.inviteView(inviter).limit,null);});
+ const cutoff=service.createSnapshot(login(admin),{requestId:randomUUID(),reason:'Freeze isolated repeating contribution receipts'});
+ check('snapshot includes repeatable task counts without editing past entries',()=>{assert.equal(service.snapshotContent(cutoff.snapshotId).entries.find(e=>e.wallet===invited.wallet).completedTasks,7);assert.throws(()=>db.prepare('DELETE FROM social_repeat_completions').run());assert.throws(()=>db.prepare('DELETE FROM community_referral_rewards').run());});
+ server=serveSocial(service,{port:0});await new Promise(r=>server.once('listening',r));
+ for(const path of ['/api/social/check-in','/api/social/register','/api/social/invite','/api/social/daily-x/challenge','/api/social/daily-x/verify']){
+  const r=await fetch('http://127.0.0.1:'+server.address().port+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});check('authenticated mutation boundary '+path,()=>assert.equal(r.status,401));
+ }
+ await new Promise(r=>server.close(r));server=null;db.close();db=new DatabaseSync(join(directory,'state.sqlite'));auth=await new WalletMiningService(config,db,null,{clock:()=>now}).initialize();service=await new SocialCommunityService(auth,allocation,{provider}).initialize();
+ check('restart retains legacy points daily receipts referral attribution and auth',()=>{assert.equal(service.profile(legacy).points,100);assert.equal(service.profile(fresh).points,16);assert.equal(service.inviteView(inviter).verified,2);assert.equal(auth.authenticate(origin,{authorization:fresh.headers.Authorization}).wallet,fresh.wallet);assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');});
+ console.log(JSON.stringify({passed:true,checks:checks.length,names:checks,actualSQLite:true,actualEd25519:true,tokenTransfers:0,productionUsersCreated:0}));
+}finally{if(server)await new Promise(r=>server.close(r));db.close();await rm(directory,{recursive:true,force:true});}
