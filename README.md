@@ -93,3 +93,11 @@ Actual extension-wallet and physical-device confirmation remain separate gates.
 ## Community contributions
 
 The Social service (`tools/social_server.mjs`) shares existing wallet sessions and SQLite/WAL while running separately on loopback 8791. `config/social-community-v1.sql` is an additive checksummed migration. Run `npm run test:community`, `npm run typecheck:community` and `npm run lint:community` in the assembled workspace. The new API/provider/client modules opt into JavaScript type checking; legacy financial modules retain their existing validation suites. No relayer or asset execution is started by the Social service. See `docs/social-community-system.md`.
+
+## Contract task factory V4
+
+The opt-in V4 lifecycle freezes a predefined catalog on chain, accepts full replay
+attestations and advances tasks without a privileged relayer or minimum successful-
+task interval. Existing V3 records and grants are retained. Public activation is
+pending an approved calibrated catalog and finite funding. See
+[the lifecycle specification](https://github.com/flybrainlabs/docs/blob/feat/contract-task-factory-v4-20261015/docs/CONTRACT_TASK_FACTORY_V4.md).

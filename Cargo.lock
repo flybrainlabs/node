@@ -505,6 +505,7 @@ name = "flybrainlabs-mining-v3"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "sha2",
 ]
 
 [[package]]

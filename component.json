@@ -80,7 +80,8 @@
     "tools/wallet_mining_v3.mjs": "tools/wallet_mining_v3.mjs",
     "tools/wallet_rpc_v3.mjs": "tools/wallet_rpc_v3.mjs",
     "tools/x_public_verification.mjs": "tools/x_public_verification.mjs",
-    "web/data/market-catalog-v1.json": "web/data/market-catalog-v1.json"
+    "web/data/market-catalog-v1.json": "web/data/market-catalog-v1.json",
+    "tools/factory_verifier_v4.mjs": "tools/factory_verifier_v4.mjs"
   },
   "project": "flybrainlabs"
 }
