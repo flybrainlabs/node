@@ -85,7 +85,9 @@
     "tools/factory_gateway_v4.mjs": "tools/factory_gateway_v4.mjs",
     "tools/factory_service_v4.mjs": "tools/factory_service_v4.mjs",
     "tests/factory_gateway_v4.mjs": "tests/factory_gateway_v4.mjs",
-    "tests/acceptance_signer_v4.mjs": "tests/acceptance_signer_v4.mjs"
+    "tests/acceptance_signer_v4.mjs": "tests/acceptance_signer_v4.mjs",
+    "tools/factory_rpc_transport_v4.mjs": "tools/factory_rpc_transport_v4.mjs",
+    "tests/factory_rpc_transport_v4.mjs": "tests/factory_rpc_transport_v4.mjs"
   },
   "project": "flybrainlabs"
 }

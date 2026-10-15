@@ -13,20 +13,10 @@ import {FactoryGatewayV4,serveFactoryGatewayV4} from './factory_gateway_v4.mjs';
 import {verifyFactorySubmission,LocalFactoryContentStore,voteInstructions} from './factory_verifier_v4.mjs';
 import {instruction,meta,TOKEN_PROGRAM_ID} from './task_factory_v4_client.mjs';
 import {DevnetJournal} from './devnet_journal.mjs';
+import {factoryRpcTransportV4} from './factory_rpc_transport_v4.mjs';
 
 const signerFile=async file=>{const bytes=await readFile(file);return bytes.length===32?Keypair.fromSeed(bytes):Keypair.fromSecretKey(Uint8Array.from(JSON.parse(bytes.toString())));};
-export function verifierRpcFetchV4(endpoint,transport=globalThis.fetch){
-  let genesis=null,pending=null;
-  return async(url,options)=>{
-    if(String(url)!==endpoint)return transport(url,options);
-    const request=JSON.parse(options.body);
-    if(request.method!=='getGenesisHash')return transport(url,options);
-    const response=value=>new Response(JSON.stringify({...value,id:request.id}),{headers:{'Content-Type':'application/json'}});
-    if(genesis&&genesis.until>Date.now())return response(genesis.value);
-    if(!pending)pending=(async()=>{const result=await transport(url,options);if(!result.ok)throw new Error('Verifier chain identity temporarily unavailable');const value=await result.json();if(value.error||value.result!=='EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG')throw new Error('Wrong verifier chain identity');genesis={value,until:Date.now()+60000};return value;})().finally(()=>pending=null);
-    return response(await pending);
-  };
-}
+export const verifierRpcFetchV4=(endpoint,transport=globalThis.fetch)=>{const shared=factoryRpcTransportV4(endpoint,{transport});return (url,options)=>shared(url,{...options,factoryFresh:true});};
 export async function runFactoryVerifierV4(config,{reader,gateway,verify=verifyFactorySubmission,onStatus=()=>{}}){
   if(config.submitVotes!==true||!Number.isSafeInteger(config.maxTransactionsPerVerifier)||config.maxTransactionsPerVerifier<1||config.maxTransactionsPerVerifier>96)throw new Error('Finite verifier authorization required');
   const signers=await Promise.all(config.verifierKeyFiles.map(signerFile));if(signers.length!==2)throw new Error('Two actual admitted trusted keys are required');
@@ -75,9 +65,9 @@ export async function runFactoryVerifierV4(config,{reader,gateway,verify=verifyF
 }
 async function main(){
   const file=process.argv[2];if(!file)throw new Error('Usage: factory_service_v4.mjs PRIVATE_RUNTIME.json');const config=JSON.parse(await readFile(file,'utf8'));
-  const connection=new Connection(config.rpcUpstream,{commitment:'finalized',disableRetryOnRateLimit:true,fetch:verifierRpcFetchV4(config.rpcUpstream)}),reader=readerForDeployment(config.deployment,connection);
+  const sharedRpc=factoryRpcTransportV4(config.rpcUpstream),connection=new Connection(config.rpcUpstream,{commitment:'finalized',disableRetryOnRateLimit:true,fetch:(url,options)=>sharedRpc(url,{...options,factoryFresh:true})}),reader=readerForDeployment(config.deployment,connection);
   await mkdir(config.outputDir,{recursive:true,mode:0o700});await mkdir(config.partialDir,{recursive:true,mode:0o700});let watcher;
-  const gateway=await new FactoryGatewayV4(config,{reader,onContent:()=>watcher?.wake()}).initialize(),server=serveFactoryGatewayV4(gateway,{port:config.port||8792});await new Promise((ok,no)=>{server.once('listening',ok);server.once('error',no);});watcher=await runFactoryVerifierV4(config,{reader,gateway});
+  const gateway=await new FactoryGatewayV4(config,{reader,fetch:sharedRpc,onContent:()=>watcher?.wake()}).initialize(),server=serveFactoryGatewayV4(gateway,{port:config.port||8792});await new Promise((ok,no)=>{server.once('listening',ok);server.once('error',no);});watcher=await runFactoryVerifierV4(config,{reader,gateway});
   console.log(JSON.stringify({status:'factory-v4-service-ready',taskAuthority:'contract',serialReplay:true,trustedVerifierKeys:2,independentOperators:1,mainnet:false}));
   for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{server.close();watcher.stop().then(()=>{gateway.close();process.exit(0);});});
 }

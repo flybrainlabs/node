@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {factoryRpcTransportV4} from '../tools/factory_rpc_transport_v4.mjs';
+const endpoint='https://fixture.invalid',body=(method,id,params=[])=>({body:JSON.stringify({jsonrpc:'2.0',method,id,params})});
+let calls=0,version=1;const transport=async(url,options)=>{calls++;const r=JSON.parse(options.body);return new Response(JSON.stringify({jsonrpc:'2.0',id:r.id,result:r.method==='sendTransaction'?'signature':{version}}));};
+const broker=factoryRpcTransportV4(endpoint,{transport,gapMs:0});
+assert.equal((await (await broker(endpoint,body('getAccountInfo',1,['account']))).json()).result.version,1);
+version=2;assert.equal((await (await broker(endpoint,body('getAccountInfo',2,['account']))).json()).result.version,1);assert.equal(calls,1);
+await broker(endpoint,body('sendTransaction',3));assert.equal((await (await broker(endpoint,body('getAccountInfo',4,['account']))).json()).result.version,2);await broker(endpoint,body('sendTransaction',5));assert.equal(calls,4);
+let limitedCalls=0;const limited=factoryRpcTransportV4(endpoint,{gapMs:0,transport:async()=>{limitedCalls++;return new Response('',{status:429,headers:{'Retry-After':'1'}});}});
+assert.equal((await limited(endpoint,body('getBalance',6,['wallet']))).status,429);assert.equal((await limited(endpoint,body('getBalance',7,['other']))).status,503);assert.equal(limitedCalls,1);
+let unlock,active=0,peak=0;const gate=new Promise(ok=>unlock=ok),serial=factoryRpcTransportV4(endpoint,{gapMs:0,maxQueued:2,transport:async(url,options)=>{active++;peak=Math.max(peak,active);await gate;active--;const r=JSON.parse(options.body);return new Response(JSON.stringify({jsonrpc:'2.0',id:r.id,result:1}));}});
+const first=serial(endpoint,body('getBalance',8,['one'])),second=serial(endpoint,body('getBalance',9,['two']));assert.equal((await serial(endpoint,body('getBalance',10,['three']))).status,503);unlock();await Promise.all([first,second]);assert.equal(peak,1);
+const wrong=factoryRpcTransportV4(endpoint,{gapMs:0,transport:async()=>new Response(JSON.stringify({jsonrpc:'2.0',id:11,result:'wrong-network'}))});await assert.rejects(wrong(endpoint,body('getGenesisHash',11)),/Wrong verifier chain/);
+console.log(JSON.stringify({passed:true,groups:4,checks:['reads are invalidated by writes; signed sends are never cached','upstream 429 starts a shared finite cooldown','one upstream lane and a finite pending queue','wrong Devnet genesis fails closed'],chainTransactions:0}));
