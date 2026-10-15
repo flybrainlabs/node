@@ -186,7 +186,8 @@ export function serve(service,{host='127.0.0.1',port=8789}={}){
       else if(path==='configuration'&&!mutation)result=Object.fromEntries(['schema','enabled','cluster','rpc','genesisHash','programId','mint','policyHash','stage','deadline','budgetAtoms','units','project','relayer','settlers','authorityId','apiBase','retentionSeconds','testOnly','defaultGrant','asOf'].map(k=>[k,k==='asOf'?service.clock():service.config[k]]));
       else if(/^evidence\/[a-f0-9]{64}$/.test(path)&&!mutation){const row=service.db.prepare('SELECT * FROM mining_v3_candidates WHERE claim_id=?').get(path.slice(9));if(!row)throw fail('NOT_FOUND',404);result=service.publicRecord(row);}
       else {const session=service.authenticate(origin,req.headers,mutation);
-        if(path==='rpc'&&mutation)result=await service.rpcProxy.request(body,session);
+        if(path==='session/check'&&mutation)result={authenticated:true,wallet:session.wallet,expiresAt:session.expires_at,genesisHash:service.config.genesisHash,programId:service.config.programId};
+        else if(path==='rpc'&&mutation)result=await service.rpcProxy.request(body,session);
         else if(path==='logout'&&mutation)result=service.logout(session);
         else if(path==='balances'&&!mutation)result=await service.balances(session);
         else if(path==='grant/prepare'&&mutation)result=await service.prepareGrant(session,body);

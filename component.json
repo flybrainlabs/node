@@ -81,7 +81,11 @@
     "tools/wallet_rpc_v3.mjs": "tools/wallet_rpc_v3.mjs",
     "tools/x_public_verification.mjs": "tools/x_public_verification.mjs",
     "web/data/market-catalog-v1.json": "web/data/market-catalog-v1.json",
-    "tools/factory_verifier_v4.mjs": "tools/factory_verifier_v4.mjs"
+    "tools/factory_verifier_v4.mjs": "tools/factory_verifier_v4.mjs",
+    "tools/factory_gateway_v4.mjs": "tools/factory_gateway_v4.mjs",
+    "tools/factory_service_v4.mjs": "tools/factory_service_v4.mjs",
+    "tests/factory_gateway_v4.mjs": "tests/factory_gateway_v4.mjs",
+    "tests/acceptance_signer_v4.mjs": "tests/acceptance_signer_v4.mjs"
   },
   "project": "flybrainlabs"
 }
