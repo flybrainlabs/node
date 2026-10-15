@@ -13,6 +13,21 @@ export const scientificTask=goal=>id('science-task-v1',Object.fromEntries(fields
 const failure=code=>Object.assign(new Error(code),{code});
 export const defaults=Object.freeze({queueTarget:5,lowWater:2,maxVerificationQueue:2,minReadyVerifiers:2,minArchiveReserveBytes:268435456,minDiskReserveBytes:2147483648,recheckSeconds:60});
 
+// A wakeup has no elapsed-time gate. Coalesce bursts while retaining one
+// follow-up if new committed state arrives during an asynchronous check.
+export function createSupplyWakeup(check,isStopped=()=>false){
+  let running=null,requested=false;
+  return ()=>{
+    if(isStopped())return running||Promise.resolve();
+    requested=true;
+    if(!running)running=Promise.resolve().then(async()=>{
+      try{while(requested&&!isStopped()){requested=false;await check();}}
+      finally{running=null;}
+    });
+    return running;
+  };
+}
+
 export function validatePolicy(policy){
   const p={...defaults,...policy};
   if(!Number.isInteger(p.queueTarget)||p.queueTarget<1||p.queueTarget>5||!Number.isInteger(p.lowWater)||p.lowWater<1||p.lowWater>=p.queueTarget||!Number.isInteger(p.maxVerificationQueue)||p.maxVerificationQueue<1||p.maxVerificationQueue>4||!Number.isInteger(p.minReadyVerifiers)||p.minReadyVerifiers!==2||p.recheckSeconds<30||p.recheckSeconds>300||!Number.isInteger(p.recheckSeconds)||![p.minArchiveReserveBytes,p.minDiskReserveBytes].every(n=>Number.isSafeInteger(n)&&n>=268435456))throw failure('SUPPLY_POLICY_BOUNDS');
@@ -180,25 +195,30 @@ export async function runTaskSupply(service,configPath,{signal}={}){
     await verified(approved.adminKey,'continuous-task-catalog',approved.catalog);const {signature,...catalog}=approved.catalog;
     await dispatcher.importCatalog(catalog);lastCatalogHash=digest;
   };
-  let timer,stopped=false,lastCheck=0,evaluation=null;
-  const evaluate=()=>{if(stopped||signal?.aborted)return Promise.resolve();if(evaluation)return evaluation;lastCheck=Date.now();evaluation=(async()=>{try{await load();const result=await dispatcher.tick();console.log(JSON.stringify({kind:'continuous-task-supply',...result}));}catch(e){dispatcher.status('recovery-required');console.error(JSON.stringify({kind:'continuous-task-supply-retry',code:e.code||'INFRASTRUCTURE_RETRY',errorClass:e.name}));}})().finally(()=>evaluation=null);return evaluation;};
+  let timer,stopped=false;
+  const evaluate=createSupplyWakeup(async()=>{try{await load();const result=await dispatcher.tick();console.log(JSON.stringify({kind:'continuous-task-supply',...result}));}catch(e){dispatcher.status('recovery-required');console.error(JSON.stringify({kind:'continuous-task-supply-retry',code:e.code||'INFRASTRUCTURE_RETRY',errorClass:e.name}));}},()=>stopped||signal?.aborted);
   // Existing committed events provide the wakeup; fallback is shared once per
   // minute. No model preparation or Solana call runs while the reserve is empty.
   const loop=async()=>{await evaluate();if(!stopped)timer=setTimeout(loop,dispatcher.policy.recheckSeconds*1000+Math.random()*5000);};
   const streamAbort=new AbortController();
   const stream=async()=>{
     while(!stopped){try{
-      for(let page=0;page<4;page++){const events=await (await api(config.authorityBase,'events?after='+Number(dispatcher.meta('eventCursor')||0))).json();for(const e of events.events)await dispatcher.event(e);if(events.events.length<128)break;if(page===3)throw failure('SUPPLY_RECONCILE_CONTINUES');}
+      for(let page=0;page<4;page++){
+        const events=await (await api(config.authorityBase,'events?after='+Number(dispatcher.meta('eventCursor')||0))).json();let wake=false;
+        try{for(const e of events.events)if(await dispatcher.event(e))wake=true;}
+        finally{if(wake)await evaluate();}
+        if(events.events.length<128)break;if(page===3)throw failure('SUPPLY_RECONCILE_CONTINUES');
+      }
       const response=await fetch(config.authorityBase+'/api/target-mining/v2/events/stream?after='+Number(dispatcher.meta('eventCursor')||0),{signal:streamAbort.signal});if(!response.ok)throw failure('SUPPLY_STREAM_UNAVAILABLE');
       let buffer='';const decoder=new TextDecoder();
-      for await(const chunk of response.body){buffer+=decoder.decode(chunk,{stream:true}).replace(/\r\n/g,'\n');if(buffer.length>262144)throw failure('SUPPLY_STREAM_BOUND');let end;
-        while((end=buffer.indexOf('\n\n'))>=0){const block=buffer.slice(0,end);buffer=buffer.slice(end+2);const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart()).join('\n');if(!data)continue;
-          if(await dispatcher.event(JSON.parse(data))&&Date.now()-lastCheck>=10000)await evaluate();
-        }
+      for await(const chunk of response.body){buffer+=decoder.decode(chunk,{stream:true}).replace(/\r\n/g,'\n');if(buffer.length>262144)throw failure('SUPPLY_STREAM_BOUND');let end,wake=false;
+        try{while((end=buffer.indexOf('\n\n'))>=0){const block=buffer.slice(0,end);buffer=buffer.slice(end+2);const data=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart()).join('\n');if(!data)continue;
+          if(await dispatcher.event(JSON.parse(data)))wake=true;
+        }}finally{if(wake)await evaluate();}
       }
     }catch(e){if(stopped)break;dispatcher.meta('streamState','reconnecting');}
     if(!stopped)await new Promise(resolve=>{const t=setTimeout(resolve,30000+Math.random()*10000);streamAbort.signal.addEventListener('abort',()=>{clearTimeout(t);resolve();},{once:true});});}
   };
   const close=()=>{stopped=true;clearTimeout(timer);streamAbort.abort();};signal?.addEventListener('abort',close,{once:true});
-  try{await Promise.all([loop(),stream()]);}finally{close();await evaluation;db.close();}
+  try{await Promise.all([loop(),stream()]);}finally{close();await evaluate();db.close();}
 }

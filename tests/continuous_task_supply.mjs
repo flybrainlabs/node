@@ -1,11 +1,14 @@
 // Isolated scheduler fault fixtures. No chain writes or production task issue.
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {readFile,mkdtemp,rm} from 'node:fs/promises';
+import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
+import {createServer} from 'node:http';
+import {once} from 'node:events';
+import {setImmediate as yieldTurn} from 'node:timers/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {generateKeyPairSync,sign} from 'node:crypto';
-import {TaskSupplyDispatcher,capacity,validateCatalog,scientificTask} from '../tools/continuous_task_supply.mjs';
+import {TaskSupplyDispatcher,capacity,validateCatalog,scientificTask,createSupplyWakeup,runTaskSupply} from '../tools/continuous_task_supply.mjs';
 import {id,unhex} from '../web/target-protocol-v2.mjs';
 const pair=generateKeyPairSync('ed25519'),authorityId=pair.publicKey.export({type:'spki',format:'der'}).subarray(-32).toString('hex');
 const signed=async(domain,v)=>({...v,signature:sign(null,unhex(await id(domain,v)),pair.privateKey).toString('hex')});
@@ -46,5 +49,63 @@ try{
  // An unrelated admin publication after an ambiguous POST is recovered from
  // the original signed receipt, without rebasing or creating another batch.
  const recovered=db.prepare('SELECT * FROM supply_batches ORDER BY rowid LIMIT 1').get();db.prepare("UPDATE supply_batches SET state='prepared' WHERE id=?").run(recovered.id);source.snapshot.supply.planHash='f'.repeat(64);assert.equal((await dispatcher.tick()).reason,'published');assert.equal(published,2);
- console.log(JSON.stringify({passed:true,checks:27,scope:'isolated finite scheduler and signed fault fixtures',productionMutations:0}));
+ // Wakeups during an in-flight read must not disappear or overlap a publish.
+ let checks=0,active=0,peak=0,blocked=true;const releases=[];
+ const wake=createSupplyWakeup(async()=>{checks++;active++;peak=Math.max(peak,active);if(blocked)await new Promise(resolve=>releases.push(resolve));active--;});
+ const first=wake();await yieldTurn();assert.equal(checks,1);
+ const burst=Array.from({length:100},()=>wake());assert.equal(checks,1);
+ releases.shift()();await yieldTurn();assert.equal(checks,2);assert.equal(peak,1);
+ blocked=false;releases.shift()();await Promise.all([first,...burst]);
+ await wake();assert.equal(checks,3,'another event runs immediately without advancing a clock');
+ let stopped=false,stopChecks=0,releaseStop;
+ const stopWake=createSupplyWakeup(async()=>{stopChecks++;await new Promise(resolve=>releaseStop=resolve);},()=>stopped);
+ const stopping=stopWake();await yieldTurn();stopWake();stopped=true;releaseStop();await stopping;await stopWake();assert.equal(stopChecks,1);
+ // A wakeup queued just as the previous read finishes also needs a check.
+ let finishingChecks=0,finishRead,lateWake;
+ const finishingGate=new Promise(resolve=>finishRead=resolve),finishingWake=createSupplyWakeup(()=>{finishingChecks++;return finishingGate;});
+ const finishing=finishingWake();await yieldTurn();finishRead();queueMicrotask(()=>lateWake=finishingWake());
+ await finishing;await lateWake;assert.equal(finishingChecks,2);
+ let attempts=0;const recoverWake=createSupplyWakeup(async()=>{if(++attempts===1)throw new Error('transient fixture failure');});
+ await assert.rejects(recoverWake(),/transient fixture/);await recoverWake();assert.equal(attempts,2);
+ console.log(JSON.stringify({passed:true,checks:27,wakeupChecks:9,scope:'isolated finite scheduler and signed fault fixtures',productionMutations:0}));
 }finally{db.close();await rm(dir,{recursive:true,force:true});}
+
+// Exercise the actual SSE consumer: relevant events arriving immediately after
+// startup and each other must wake it without the old ten-second timer gate.
+const streamDir=await mkdtemp(join(tmpdir(),'flybrain-supply-stream-'));
+const abort=new AbortController(),originalLog=console.log,statuses=[],observers=new Set();let stream,run;
+const recovered=await signed('protocol-event',{networkId:network.networkId,authorityId,eventSequence:1,kind:'ROUND_FINALIZED',roundId:'0'.repeat(64),payload:{},createdAt:clock});
+const notify=()=>{for(const observer of [...observers])observer();};
+const until=predicate=>new Promise((resolve,reject)=>{
+ const check=()=>{if(predicate()){clearTimeout(timer);observers.delete(check);resolve();}};
+ const timer=setTimeout(()=>{observers.delete(check);reject(new Error('Task event failed to wake the dispatcher promptly'));},2000);
+ observers.add(check);check();
+});
+const server=createServer((req,res)=>{
+ if(req.url.startsWith('/api/target-mining/v2/events/stream?')){res.writeHead(200,{'content-type':'text/event-stream'});res.flushHeaders();stream=res;notify();}
+ else if(req.url.startsWith('/api/target-mining/v2/events?')){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({events:[recovered],nextCursor:1}));}
+ else{res.writeHead(404);res.end();}
+});
+try{
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const authorityPath=join(streamDir,'authority.json'),configPath=join(streamDir,'config.json'),stateDatabase=join(streamDir,'state.sqlite');
+ await writeFile(authorityPath,JSON.stringify({...network,adminKeys:[authorityId]}));
+ await writeFile(configPath,JSON.stringify({schema:'flybrain-continuous-task-supply-config-v1',enabled:true,...network,authorityBase:'http://127.0.0.1:'+server.address().port,authorityConfigPath:authorityPath,stateDatabase,catalogPath:join(streamDir,'absent-catalog.json')}));
+ console.log=(line,...rest)=>{let status;try{status=JSON.parse(line);}catch{}if(status?.kind==='continuous-task-supply'){statuses.push(status);notify();}else originalLog(line,...rest);};
+ run=runTaskSupply({config:{authorityId},chain:()=>{throw new Error('Empty reserve must never request funding');}},configPath,{signal:abort.signal});
+ // Surface an unexpected startup failure without an unhandled rejection.
+ let runError;run.catch(error=>{runError=error;notify();});
+ await until(()=>runError||stream&&statuses.length>0);if(runError)throw runError;assert.equal(statuses.length,2,'recovered events immediately recheck supply');
+ const before=statuses.length,start=performance.now();
+ const first=await signed('protocol-event',{networkId:network.networkId,authorityId,eventSequence:2,kind:'ROUND_FINALIZED',roundId:'0'.repeat(64),payload:{},createdAt:clock});
+ stream.write('data: '+JSON.stringify(first)+'\n\n');await until(()=>statuses.length===before+1);
+ const {signature,...unsigned}=first;const second=await signed('protocol-event',{...unsigned,eventSequence:3,kind:'ROUND_EXPIRED'});
+ stream.write('data: '+JSON.stringify(first)+'\n\ndata: '+JSON.stringify(second)+'\n\n');await until(()=>statuses.length===before+2);
+ assert.ok(performance.now()-start<10000,'successive task events do not wait ten seconds');
+ assert.ok(statuses.every(s=>s.reason==='waiting-approved-tasks'));
+ abort.abort();await run;
+ const state=new DatabaseSync(stateDatabase);try{assert.equal(state.prepare("SELECT value FROM supply_meta WHERE key='eventCursor'").get().value,'3');assert.equal(state.prepare('SELECT COUNT(*) AS n FROM supply_batches').get().n,0);}finally{state.close();}
+ originalLog(JSON.stringify({passed:true,scope:'actual loopback SSE events without a minimum task interval',recoveredWakeups:1,successiveWakeups:2,duplicateWakeups:0,chainReads:0,productionMutations:0}));
+}finally{
+ console.log=originalLog;abort.abort();if(run)await run.catch(()=>{});server.closeAllConnections();server.close();if(server.listening)await once(server,'close');await rm(streamDir,{recursive:true,force:true});
+}
