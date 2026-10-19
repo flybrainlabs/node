@@ -52,5 +52,11 @@ export class FactoryPoolTransportV4 {
     if(status?.confirmationStatus==='finalized'){const receipt={signature:record.signature,slot:status.slot,commitment:'finalized',err:status.err||null};await this.queue.receipt(job,id,status.err?'failed':'finalized',receipt);return receipt;}
     return {signature:record.signature,confirmation:'unknown'};
   }
-  async reconcileAll(job){const {rows}=await this.queue.pool.query("SELECT id FROM factory_pool_v4.transactions WHERE job_id=$1 AND state<>'finalized'",[job.id]);for(const r of rows)await this.reconcile(job,r.id.slice(job.id.length+1));}
+  async reconcileAll(job){
+    const {rows}=await this.queue.pool.query("SELECT id,signature FROM factory_pool_v4.transactions WHERE job_id=$1 AND state<>'finalized' ORDER BY created_at,id",[job.id]);
+    for(let at=0;at<rows.length;at+=64){
+      const batch=rows.slice(at,at+64),statuses=(await this.connection.getSignatureStatuses(batch.map(r=>r.signature),{searchTransactionHistory:true})).value;
+      for(let i=0;i<batch.length;i++){const status=statuses[i],record=batch[i];if(status?.confirmationStatus==='finalized')await this.queue.receipt(job,record.id,status.err?'failed':'finalized',{signature:record.signature,slot:status.slot,commitment:'finalized',err:status.err||null});}
+    }
+  }
 }
