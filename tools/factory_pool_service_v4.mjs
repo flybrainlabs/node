@@ -27,7 +27,7 @@ const signerFile=async file=>{const bytes=await readFile(file);return bytes.leng
 export class FactoryPoolServiceV4 {
   constructor({config,queue,connection,signers,supply=null,calibration=null,verify=verifyFactorySubmission,gatewayFactory=null}){
     Object.assign(this,{config,queue,connection,signers,supply,calibration,verify,gatewayFactory});this.contexts=new Map();this.owner=randomUUID();this.stopped=false;this.scan=0;this.eventClients=new Set();this.eventCursor='0';
-    if(config.deployment.cluster!=='devnet'||!Number.isInteger(config.replayConcurrency)||config.replayConcurrency<1||config.replayConcurrency>8||signers.length!==2||!Number.isInteger(config.maxTransactionsPerVerifier)||config.maxTransactionsPerVerifier<1||config.maxTransactionsPerVerifier>96)throw fail('POOL_RUNTIME_BOUNDS');
+    if(config.deployment.cluster!=='devnet'||!Number.isInteger(config.replayConcurrency)||config.replayConcurrency<1||config.replayConcurrency>8||signers.length!==2||!Number.isInteger(config.maxTransactionsPerVerifier)||config.maxTransactionsPerVerifier<1||config.maxTransactionsPerVerifier>4096)throw fail('POOL_RUNTIME_BOUNDS');
     if(config.serializeCalibrationWithReplay&&config.replayConcurrency!==1)throw fail('POOL_SHARED_NATIVE_LANE');
   }
   async nativeWork(operation){
