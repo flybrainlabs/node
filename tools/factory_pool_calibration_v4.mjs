@@ -35,7 +35,11 @@ export class FactoryPoolCalibrationV4 {
     const inventoryPath=join(directory,'inventory.json');await frozen(inventoryPath,job.payload.inventory);
     const output=join(directory,'generation');let summary;
     try{summary=JSON.parse(await readFile(join(output,'summary.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;
-      const run=await execute(this.policy.python,[this.policy.tool,'--historical-inventory',inventoryPath,'--output',output,'--groups',String(job.payload.groups)],{timeout:86400000,maxBuffer:2*1024*1024});await frozen(join(directory,'execution.json'),{stdoutHash:hash(Buffer.from(run.stdout)),stderrHash:hash(Buffer.from(run.stderr))});summary=JSON.parse(await readFile(join(output,'summary.json'),'utf8'));
+      const args=[this.policy.tool,'--historical-inventory',inventoryPath,'--output',output,'--groups',String(job.payload.groups)];
+      for(const [field,flag]of [['cacheDir','--cache'],['modelDir','--model'],['binary','--binary'],['goalFile','--goal']])if(this.policy[field])args.push(flag,this.policy[field]);
+      if(this.policy.template)args.push('--template',this.policy.template);
+      let run;try{run=await execute(this.policy.python,args,{timeout:86400000,maxBuffer:2*1024*1024});}catch(error){await frozen(join(directory,'failure-'+job.fence+'.json'),{stderrHash:hash(Buffer.from(error.stderr||'')),toolHash:this.policy.toolSha256});throw fail(String(error.stderr).includes('The anatomical selection envelope is exhausted')?'POOL_CALIBRATION_TEMPLATE_EXHAUSTED':'POOL_CALIBRATION_TOOL_FAILED');}
+      await frozen(join(directory,'execution.json'),{stdoutHash:hash(Buffer.from(run.stdout)),stderrHash:hash(Buffer.from(run.stderr))});summary=JSON.parse(await readFile(join(output,'summary.json'),'utf8'));
     }
     if(summary.schema!=='flybrainlabs-factory-catalog-proposal-v4'||summary.historicalGoalsExcluded!==job.payload.inventory.count||summary.eligibleCount<1||summary.approval!==false||summary.publicBudgetAtoms!=='0')throw fail('POOL_CALIBRATION_INELIGIBLE');
     const tasks=[];

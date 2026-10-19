@@ -95,7 +95,8 @@
     "tests/factory_pool_queue_v4.mjs": "tests/factory_pool_queue_v4.mjs",
     "tools/factory_pool_service_v4.mjs": "tools/factory_pool_service_v4.mjs",
     "tools/factory_pool_calibration_v4.mjs": "tools/factory_pool_calibration_v4.mjs",
-    "tests/factory_pool_sbf_v4.mjs": "tests/factory_pool_sbf_v4.mjs"
+    "tests/factory_pool_sbf_v4.mjs": "tests/factory_pool_sbf_v4.mjs",
+    "tests/factory_pool_capacity_v4.mjs": "tests/factory_pool_capacity_v4.mjs"
   },
   "project": "flybrainlabs"
 }

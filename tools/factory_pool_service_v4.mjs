@@ -28,6 +28,14 @@ export class FactoryPoolServiceV4 {
   constructor({config,queue,connection,signers,supply=null,calibration=null,verify=verifyFactorySubmission,gatewayFactory=null}){
     Object.assign(this,{config,queue,connection,signers,supply,calibration,verify,gatewayFactory});this.contexts=new Map();this.owner=randomUUID();this.stopped=false;this.scan=0;this.eventClients=new Set();this.eventCursor='0';
     if(config.deployment.cluster!=='devnet'||!Number.isInteger(config.replayConcurrency)||config.replayConcurrency<1||config.replayConcurrency>8||signers.length!==2||!Number.isInteger(config.maxTransactionsPerVerifier)||config.maxTransactionsPerVerifier<1||config.maxTransactionsPerVerifier>96)throw fail('POOL_RUNTIME_BOUNDS');
+    if(config.serializeCalibrationWithReplay&&config.replayConcurrency!==1)throw fail('POOL_SHARED_NATIVE_LANE');
+  }
+  async nativeWork(operation){
+    if(!this.config.serializeCalibrationWithReplay)return operation();
+    const previous=this.nativeWorkTail||Promise.resolve();let release;
+    this.nativeWorkTail=new Promise(resolve=>release=resolve);
+    await previous;
+    try{if(this.stopped)throw fail('POOL_STOPPED');return await operation();}finally{release();}
   }
   async context(deployment){
     if(this.contexts.has(deployment.factory))return this.contexts.get(deployment.factory);
@@ -111,7 +119,8 @@ export class FactoryPoolServiceV4 {
     this.root.gateway.verifierStatus={status:counts.blocked?'reconciliation-required':counts.pending?'replay-queue-active':'waiting-for-revealed-submission',at:new Date().toISOString(),serialReplay:this.config.replayConcurrency===1,maxReplayProcesses:this.config.replayConcurrency,nativeModelChecked:!!this.nativeReady,trustedKeys:2,independentOperators:1,pending:counts.pending,blocked:counts.blocked,catalogs:this.contexts.size,remainingTasks:remaining,openCatalogs,reserve:this.reserveStatus||null};
     await this.notify();
   }
-  async replay(job){
+  async replay(job){return this.nativeWork(()=>this.replayInternal(job));}
+  async replayInternal(job){
     const c=this.contexts.get(job.payload.factory),signer=this.signers.find(s=>s.publicKey.toBase58()===job.payload.payer);if(!c||!signer)throw fail('POOL_REPLAY_SCOPE');
     const address=new PublicKey(job.payload.submission),reader=c.reader;
     const state=async()=>{const s=await reader.account(address,decodeSubmission),t=await reader.account(new PublicKey(s.task),decodeTask),f=await reader.factory(),index=f.verifiers.findIndex(v=>new PublicKey(v).equals(signer.publicKey));if(index<0||!reader.a.task(reader.expected.factoryAddress,t.index).equals(new PublicKey(s.task))||!new PublicKey(t.factory).equals(reader.expected.factoryAddress))throw fail('POOL_REPLAY_SCOPE');return {s,t,f,index};};
@@ -155,7 +164,7 @@ export class FactoryPoolServiceV4 {
     const job=await this.queue.claim(kind,this.owner+':'+randomUUID(),120,null,scopes);if(!job)return false;let lost=false;
     const renewal=setInterval(()=>this.queue.renew(job,120).catch(()=>lost=true),30000);
     try{const result=await handler(job);if(!lost)await this.queue.finish(job,result);}
-    catch(error){if(!lost)try{await this.queue.retry(job,{delaySeconds:error.code==='POOL_CONFIRMATION_PENDING'?2:30,blocked:['POOL_TRANSACTION_UNKNOWN','POOL_TRANSACTION_FAILED','POOL_FINITE_AUTHORIZATION','POOL_SIGNER_ALLOWANCE','POOL_CALIBRATION_INELIGIBLE','POOL_CALIBRATION_SCOPE','POOL_REWARD_AUTHORIZATION_EXHAUSTED','POOL_COMPLETE_HISTORY_REQUIRED','POOL_SCIENCE_ALREADY_REGISTERED','POOL_CATALOG_DEADLINE','POOL_DUPLICATE_SCIENCE'].includes(error.code),code:error.code&&/^[A-Z0-9_]{1,80}$/.test(error.code)?error.code:'POOL_RETRY_REQUIRED'});}catch{}}
+    catch(error){if(!lost)try{await this.queue.retry(job,{delaySeconds:error.code==='POOL_CONFIRMATION_PENDING'?2:30,blocked:['POOL_TRANSACTION_UNKNOWN','POOL_TRANSACTION_FAILED','POOL_FINITE_AUTHORIZATION','POOL_SIGNER_ALLOWANCE','POOL_CALIBRATION_INELIGIBLE','POOL_CALIBRATION_SCOPE','POOL_CALIBRATION_TEMPLATE_EXHAUSTED','POOL_REWARD_AUTHORIZATION_EXHAUSTED','POOL_COMPLETE_HISTORY_REQUIRED','POOL_SCIENCE_ALREADY_REGISTERED','POOL_CATALOG_DEADLINE','POOL_DUPLICATE_SCIENCE'].includes(error.code),code:typeof error.code==='string'&&/^[A-Z0-9_]{1,80}$/.test(error.code)?error.code:'POOL_RETRY_REQUIRED'});}catch{}}
     finally{clearInterval(renewal);}return true;
   }
   wake(){this.again=true;}
@@ -163,7 +172,7 @@ export class FactoryPoolServiceV4 {
     const lanes=Array.from({length:this.config.replayConcurrency},()=>this.loop('replay',j=>this.replay(j),signal));
     lanes.push(this.loop('payment',j=>this.payment(j),signal));
     if(this.supply)lanes.push(this.loop('catalog',j=>this.supply.register(j,{contentStore:new LocalFactoryContentStore(this.config.contentDir)}),signal));
-    if(this.calibration)lanes.push(this.loop('calibrate',j=>this.calibration.run(j),signal));
+    if(this.calibration)lanes.push(this.loop('calibrate',j=>this.nativeWork(()=>this.calibration.run(j)),signal));
     while(!this.stopped&&!signal?.aborted){try{await this.discover();this.lastDiscoveryError=null;}catch{this.lastDiscoveryError='POOL_DISCOVERY_RETRY';}await new Promise(ok=>setTimeout(ok,5000));}
     this.stopped=true;await Promise.all(lanes);
   }

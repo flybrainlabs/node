@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {FactoryPoolServiceV4} from '../tools/factory_pool_service_v4.mjs';
+
+const config={deployment:{cluster:'devnet'},replayConcurrency:1,maxTransactionsPerVerifier:1,serializeCalibrationWithReplay:true};
+const service=new FactoryPoolServiceV4({config,signers:[{},{}]});
+let release;
+const order=[];
+const replay=service.nativeWork(async()=>{order.push('replay-start');await new Promise(ok=>release=ok);order.push('replay-finish');});
+await new Promise(setImmediate);
+const calibration=service.nativeWork(async()=>{order.push('calibration-start');throw new Error('retained-calibration-fault');});
+const rejected=assert.rejects(calibration,/retained-calibration-fault/);
+const successor=service.nativeWork(async()=>order.push('successor'));
+await new Promise(setImmediate);
+assert.deepEqual(order,['replay-start']);
+release();
+await Promise.all([replay,rejected,successor]);
+assert.deepEqual(order,['replay-start','replay-finish','calibration-start','successor']);
+assert.throws(()=>new FactoryPoolServiceV4({config:{...config,replayConcurrency:2},signers:[{},{}]}),/POOL_SHARED_NATIVE_LANE/);
+config.serializeCalibrationWithReplay=false;
+let finish;
+const held=service.nativeWork(async()=>new Promise(ok=>finish=ok));
+let parallel=false;
+await service.nativeWork(async()=>parallel=true);
+assert.equal(parallel,true);
+finish();await held;
+service.stopped=true;config.serializeCalibrationWithReplay=true;
+await assert.rejects(service.nativeWork(async()=>assert.fail('Stopped service admitted native work')),/POOL_STOPPED/);
+console.log(JSON.stringify({passed:true,checks:['Calibration and full replay share one native lane on a small host','A failed calibration releases capacity without losing the queued successor','Explicit parallel configuration remains available','Stopped services reject queued native work'],chainWrites:0}));

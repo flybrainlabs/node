@@ -14,7 +14,7 @@ const digest=v=>createHash('sha256').update(canonical(v)).digest('hex');
 const fail=code=>Object.assign(new Error(code),{code});
 export class FactoryPoolSupplyV4 {
   constructor({queue,baseDeployment,trust,authority,transport,authorization}){
-    Object.assign(this,{queue,baseDeployment,trust,authority,transport,authorization});this.a=addresses(baseDeployment.programId);
+    Object.assign(this,{queue,baseDeployment,trust,authority,transport,authorization});this.a=addresses(baseDeployment.programId);this.checkedScience=new Set();
     if(baseDeployment.cluster!=='devnet'||!authority.publicKey.equals(new PublicKey(trust.authority))||!authorization||!/^[a-f0-9]{64}$/.test(authorization.evidenceHash)||!/^[1-9][0-9]{0,19}$/.test(authorization.rewardAtoms)||BigInt(authorization.rewardAtoms)>0xffffffffffffffffn)throw fail('POOL_FINITE_AUTHORIZATION');
   }
   async historical(identities){
@@ -49,10 +49,15 @@ export class FactoryPoolSupplyV4 {
     if(!new PublicKey(g.authority).equals(this.authority.publicKey)||!new PublicKey(g.network).equals(new PublicKey(d.genesisHash))||hex(g.policy)!==d.policyHash||!new PublicKey(g.mint).equals(new PublicKey(d.mint))||!g.issued)throw fail('POOL_GLOBAL_SCOPE');
     const read=async()=>{const info=await connection.getAccountInfo(factory,'finalized');if(!info)return null;if(!info.owner.equals(program))throw fail('POOL_FACTORY_OWNER');const f=decodeFactory(info.data);if(hex(f.id)!==d.factoryId||hex(f.catalogRoot)!==d.catalogRoot||String(f.budget)!==d.budgetAtoms||String(f.deadline)!==d.deadline||f.count!==d.taskCount||!new PublicKey(f.authority).equals(this.authority.publicKey)||hex(f.policy)!==d.policyHash)throw fail('POOL_FACTORY_SCOPE');return f;};
     let f=await read();
-    for(const [index,descriptor]of compiled.descriptors.entries()){
+    // The database excludes duplicate science across this pool, and append
+    // enforces the permanent marker atomically on chain. Rechecking every
+    // future marker before each confirmation retry can exhaust an RPC budget.
+    const scienceScope=catalog.id+':'+catalog.plan_hash;
+    if(!this.checkedScience.has(scienceScope))for(const [index,descriptor]of compiled.descriptors.entries()){
       const marker=await connection.getAccountInfo(this.a.science(fromHex(descriptor.identity)),'finalized');
       if(marker&&(!marker.owner.equals(program)||marker.data.length<76||marker.data.subarray(0,8).toString()!=='FBTIV004'||marker.data.subarray(8,40).toString('hex')!==descriptor.identity||!new PublicKey(marker.data.subarray(40,72)).equals(factory)||marker.data.readUInt32LE(72)!==index))throw fail('POOL_SCIENCE_ALREADY_REGISTERED');
     }
+    this.checkedScience.add(scienceScope);
     const slot=await connection.getSlot('finalized'),now=await connection.getBlockTime(slot);if(!Number.isSafeInteger(now)||now>=Number(d.deadline))throw fail('POOL_CATALOG_DEADLINE');
     if(!f){
       if(g.available[0]<BigInt(d.budgetAtoms))throw fail('POOL_FINALIZED_FUNDING_REQUIRED');
