@@ -52,5 +52,5 @@ export class FactoryPoolTransportV4 {
     if(status?.confirmationStatus==='finalized'){const receipt={signature:record.signature,slot:status.slot,commitment:'finalized',err:status.err||null};await this.queue.receipt(job,id,status.err?'failed':'finalized',receipt);return receipt;}
     return {signature:record.signature,confirmation:'unknown'};
   }
-  async reconcileAll(job){const {rows}=await this.queue.pool.query('SELECT id FROM factory_pool_v4.transactions WHERE job_id=$1',[job.id]);for(const r of rows)await this.reconcile(job,r.id.slice(job.id.length+1));}
+  async reconcileAll(job){const {rows}=await this.queue.pool.query("SELECT id FROM factory_pool_v4.transactions WHERE job_id=$1 AND state<>'finalized'",[job.id]);for(const r of rows)await this.reconcile(job,r.id.slice(job.id.length+1));}
 }

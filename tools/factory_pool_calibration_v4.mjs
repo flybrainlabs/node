@@ -25,9 +25,13 @@ export class FactoryPoolCalibrationV4 {
   }
   async schedule(shortage){
     if(!Number.isInteger(shortage)||shortage<=0)return;
+    const allocated=(await this.queue.pool.query("SELECT COALESCE(sum((deployment->>'budgetAtoms')::numeric),0)::text AS total FROM factory_pool_v4.catalogs WHERE pool_id=$1",[this.supply.trust.poolId])).rows[0].total;
+    const remaining=BigInt(this.supply.authorization.rewardAtoms)-BigInt(allocated),groups=Math.min(shortage,this.policy.groups,Number(remaining>0n?remaining/BigInt(this.policy.rules.rewardAtoms):0n));
+    this.supplyStatus={code:groups?'POOL_CALIBRATION_READY':'POOL_REWARD_AUTHORIZATION_EXHAUSTED',allocatedRewardAtoms:allocated,remainingRewardAtoms:String(remaining>0n?remaining:0n)};
+    if(!groups)return;
     const active=(await this.queue.pool.query("SELECT 1 FROM factory_pool_v4.jobs WHERE kind='calibrate' AND scope=$1 AND state<>'done' LIMIT 1",[this.supply.trust.poolId])).rows.length;if(active)return;
     const inventory=await this.inventory(),digest=hash(canonical(inventory)),id='calibrate:'+this.supply.trust.poolId+':'+digest;
-    return this.queue.enqueue({id,kind:'calibrate',scope:this.supply.trust.poolId,payload:{inventory,inventoryHash:digest,groups:Math.min(shortage,this.policy.groups),payer:this.supply.authority.publicKey.toBase58()}});
+    return this.queue.enqueue({id,kind:'calibrate',scope:this.supply.trust.poolId,payload:{inventory,inventoryHash:digest,groups,payer:this.supply.authority.publicKey.toBase58()}});
   }
   async run(job){
     if(job.scope!==this.supply.trust.poolId||hash(canonical(job.payload.inventory))!==job.payload.inventoryHash||hash(await readFile(this.policy.tool))!==this.policy.toolSha256)throw fail('POOL_CALIBRATION_SCOPE');

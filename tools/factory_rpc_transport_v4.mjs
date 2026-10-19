@@ -1,6 +1,7 @@
 // One bounded upstream lane is shared by the public gateway and verifier.
 // Task progression has no minimum interval; this limits RPC resource pressure.
-export function factoryRpcTransportV4(endpoint,{transport=globalThis.fetch,gapMs=400,maxQueued=16}={}){
+export function factoryRpcTransportV4(endpoint,{transport=globalThis.fetch,gapMs=400,maxQueued=16,timeoutMs=15000}={}){
+  if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>120000)throw new RangeError('Finite RPC timeout required');
   const cache=new Map(),pending=new Map();let tail=Promise.resolve(),queued=0,nextAt=0,cooldown=0;
   const reply=(text,status=200)=>new Response(text,{status,headers:{'Content-Type':'application/json'}});
   return async(url,options={})=>{
@@ -17,7 +18,8 @@ export function factoryRpcTransportV4(endpoint,{transport=globalThis.fetch,gapMs
       const wait=Math.max(0,nextAt-Date.now());if(wait)await new Promise(ok=>setTimeout(ok,wait));nextAt=Date.now()+gapMs;
       if(Date.now()<cooldown)return {status:503,text:JSON.stringify({code:'RPC_BUSY'})};
       if(method==='sendTransaction')cache.clear();
-      const response=await transport(url,requestOptions);
+      const deadline=AbortSignal.timeout(timeoutMs),signal=requestOptions.signal?AbortSignal.any([requestOptions.signal,deadline]):deadline;
+      const response=await transport(url,{...requestOptions,signal});
       if(response.status===429){const seconds=Number(response.headers.get('retry-after'));cooldown=Date.now()+Math.min(30000,Math.max(3000,Number.isFinite(seconds)?seconds*1000:3000));return {status:429,text:JSON.stringify({code:'RPC_RATE_LIMITED'})};}
       if(!response.ok)return {status:503,text:JSON.stringify({code:'RPC_UNAVAILABLE'})};
       const reader=response.body.getReader(),chunks=[];let length=0;
@@ -28,7 +30,7 @@ export function factoryRpcTransportV4(endpoint,{transport=globalThis.fetch,gapMs
       if(identity&&value.result!=='EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG')throw new Error('Wrong verifier chain identity');
       if(ttl&&!value.error&&value.result!==null){if(cache.size>=64)cache.delete(cache.keys().next().value);cache.set(key,{value,until:Date.now()+ttl});}
       if(method==='sendTransaction')cache.clear();return {status:200,value};
-    }).finally(()=>{queued--;});tail=operation;
+    }).catch(error=>{if(['TimeoutError','AbortError'].includes(error.name))return {status:503,text:JSON.stringify({code:'RPC_TIMEOUT'})};throw error;}).finally(()=>{queued--;});tail=operation;
     if(ttl){const valuePromise=operation.then(r=>{if(r.status!==200)throw Object.assign(new Error('RPC temporarily unavailable'),{status:r.status});return r.value;});pending.set(key,valuePromise);valuePromise.finally(()=>{if(pending.get(key)===valuePromise)pending.delete(key);}).catch(()=>{});}
     const result=await operation;return result.status===200?pack(result.value):reply(result.text,result.status);
   };

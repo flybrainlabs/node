@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {FactoryPoolServiceV4} from '../tools/factory_pool_service_v4.mjs';
+import {FactoryPoolCalibrationV4} from '../tools/factory_pool_calibration_v4.mjs';
 
 const config={deployment:{cluster:'devnet'},replayConcurrency:1,maxTransactionsPerVerifier:1,serializeCalibrationWithReplay:true};
 const service=new FactoryPoolServiceV4({config,signers:[{},{}]});
@@ -25,4 +26,7 @@ assert.equal(parallel,true);
 finish();await held;
 service.stopped=true;config.serializeCalibrationWithReplay=true;
 await assert.rejects(service.nativeWork(async()=>assert.fail('Stopped service admitted native work')),/POOL_STOPPED/);
-console.log(JSON.stringify({passed:true,checks:['Calibration and full replay share one native lane on a small host','A failed calibration releases capacity without losing the queued successor','Explicit parallel configuration remains available','Stopped services reject queued native work'],chainWrites:0}));
+const calibrationQueue={pool:{query:async()=>({rows:[{total:'3200'}]})},enqueue:async()=>assert.fail('Fully allocated rewards started another calibration')};
+const budgeted=new FactoryPoolCalibrationV4({queue:calibrationQueue,supply:{trust:{poolId:'fixture'},authorization:{evidenceHash:'e'.repeat(64),rewardAtoms:'3200'}},policy:{groups:16,deadlineSeconds:86400,toolSha256:'f'.repeat(64),evidenceHash:'e'.repeat(64),rules:{rewardAtoms:'200'}}});
+await budgeted.schedule(16);assert.equal(budgeted.supplyStatus.code,'POOL_REWARD_AUTHORIZATION_EXHAUSTED');
+console.log(JSON.stringify({passed:true,checks:['Calibration and full replay share one native lane on a small host','A failed calibration releases capacity without losing the queued successor','Explicit parallel configuration remains available','Stopped services reject queued native work','Fully allocated rewards stop future calibration without affecting funded task replay'],chainWrites:0}));
