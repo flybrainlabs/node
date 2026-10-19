@@ -23,7 +23,8 @@ const delay=ms=>new Promise(ok=>setTimeout(ok,ms));
 export class FactoryGatewayV4 {
   constructor(config,{reader,authenticate,fetch:fetchImpl=globalThis.fetch,onContent=()=>{}}={}){
     this.config=config;this.fetch=fetchImpl;this.reader=reader||readerForDeployment(config.deployment);this.authenticateOverride=authenticate;this.onContent=onContent;this.content=new LocalFactoryContentStore(config.contentDir);this.locks=new Map();this.rates=new Map();this.cache=new Map();this.activeRpc=0;
-    if(config.deployment.cluster!=='devnet'||config.maxStorageBytes>2*1024**3||config.maxStorageBytes<1||!Array.isArray(config.origins)||config.origins.some(x=>!/^https:\/\//.test(x)))throw new Error('Explicit finite Devnet gateway configuration required');
+    const archiveLimit=config.poolStorageApproved===true?1024**4:2*1024**3;
+    if(config.deployment.cluster!=='devnet'||!Number.isSafeInteger(config.maxStorageBytes)||config.maxStorageBytes>archiveLimit||config.maxStorageBytes<1||!Array.isArray(config.origins)||config.origins.some(x=>!/^https:\/\//.test(x)))throw new Error('Explicit finite Devnet gateway configuration required');
     this.db=new DatabaseSync(config.database);this.db.exec(`PRAGMA journal_mode=WAL;CREATE TABLE IF NOT EXISTS uploads(submission TEXT PRIMARY KEY,wallet TEXT NOT NULL,scope TEXT NOT NULL,objects TEXT NOT NULL,total INTEGER NOT NULL,created INTEGER NOT NULL);`);
   }
   async initialize(){await mkdir(this.config.contentDir,{recursive:true,mode:0o700});await mkdir(this.config.partialDir,{recursive:true,mode:0o700});await this.reader.factory();return this;}
@@ -115,7 +116,7 @@ export class FactoryGatewayV4 {
   close(){this.db.close();}
 }
 async function bodyBytes(req,max){const chunks=[];let size=0;for await(const b of req){size+=b.length;if(size>max)throw fail('BODY_LIMIT',413);chunks.push(b);}return Buffer.concat(chunks);}
-export function serveFactoryGatewayV4(service,{port=8792,host='127.0.0.1'}={}){
+export function serveFactoryGatewayV4(service,{port=8792,host='127.0.0.1',pool=null}={}){
   let active=0;const server=createServer(async(req,res)=>{
     if(active>=12){res.writeHead(503,{'Content-Type':'application/json'});return res.end('{"code":"GATEWAY_BUSY"}');}active++;let released=false;const release=()=>{if(!released){released=true;active--;}};res.once('close',release);res.once('finish',release);
     try{
@@ -123,12 +124,16 @@ export function serveFactoryGatewayV4(service,{port=8792,host='127.0.0.1'}={}){
       if(origin)res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');res.setHeader('Cache-Control','no-store');
       if(req.method==='OPTIONS'){res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization, X-Mining-CSRF, Solana-Client');res.writeHead(204);return res.end();}
       const url=new URL(req.url,'http://localhost'),path=url.pathname.replace(/^\/api\/task-factory\/v4\//,''),content=/^content\/([a-f0-9]{64})\.bin$/.exec(path);let value;
+      const selected=url.searchParams.get('factory'),gateway=selected?await pool?.gateway(selected):service;if(!gateway)throw fail('FACTORY_NOT_REGISTERED',404);
       if(req.method==='GET'&&content){const file=join(service.config.contentDir,content[1]+'.bin');let info;try{info=await stat(file);}catch{throw fail('CONTENT_NOT_FOUND',404);}res.setHeader('Content-Type','application/octet-stream');res.setHeader('Content-Length',info.size);res.setHeader('Cache-Control','public, max-age=31536000, immutable');createReadStream(file).on('error',()=>res.destroy()).pipe(res);return;}
-      if(req.method==='GET'&&path==='configuration')value=service.config.deployment;
-      else if(req.method==='GET'&&path==='health')value={schema:'flybrainlabs-factory-health-v4',transportReady:true,taskAuthority:'contract',catalogCreation:false,verifier:service.verifierStatus||{status:'not-started'}};
+      if(req.method==='GET'&&path==='pool'&&pool)value=await pool.manifest();
+      else if(req.method==='POST'&&path==='inputs'&&pool)value=await pool.input(req,JSON.parse((await bodyBytes(req,16384)).toString()));
+      else if(req.method==='GET'&&path==='events'&&pool){await pool.openEvents(req,res,url);release();return;}
+      else if(req.method==='GET'&&path==='configuration')value=gateway.config.deployment;
+      else if(req.method==='GET'&&path==='health')value={schema:'flybrainlabs-factory-health-v4',transportReady:true,taskAuthority:'contract',catalogCreation:!!pool,verifier:service.verifierStatus||{status:'not-started'}};
       else if(req.method==='POST'&&path==='rpc')value=await service.rpc(req,JSON.parse((await bodyBytes(req,8192)).toString()));
-      else if(req.method==='POST'&&path==='uploads')value=await service.authorize(req,JSON.parse((await bodyBytes(req,1024*1024)).toString()));
-      else if(req.method==='POST'&&content)value=await service.upload(req,url,content[1],await bodyBytes(req,1024*1024));
+      else if(req.method==='POST'&&path==='uploads')value=await gateway.authorize(req,JSON.parse((await bodyBytes(req,1024*1024)).toString()));
+      else if(req.method==='POST'&&content)value=await gateway.upload(req,url,content[1],await bodyBytes(req,1024*1024));
       else throw fail('NOT_FOUND',404);
       res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));
     }catch(error){if(!res.headersSent){res.setHeader('Content-Type','application/json');res.writeHead(error.status||503);res.end(JSON.stringify({code:error.code||'RETRYABLE_INFRA_ERROR'}));}else res.destroy();}

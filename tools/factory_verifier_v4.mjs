@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Verification only: no goal generation, difficulty selection or round entropy.
-import {readFile,writeFile,mkdir,stat} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,stat,open,link,unlink} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
 import {resolve,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {Keypair,PublicKey,Transaction,sendAndConfirmTransaction,Ed25519Program} from '@solana/web3.js';
@@ -12,6 +13,12 @@ import {instruction,meta,instructionSysvar} from './task_factory_v4_client.mjs';
 import {nativeReply,ReplayError,getModelReadiness} from './candidate_verifier_v2.mjs';
 export class LocalFactoryContentStore {
   constructor(directory){this.directory=resolve(directory);}
+  async put(root,bytes){
+    if(!/^[a-f0-9]{64}$/.test(root)||bytes.length>1024*1024||await hash(bytes)!==root)throw new Error('Invalid calibrated content');
+    await mkdir(this.directory,{recursive:true,mode:0o700});const temporary=join(this.directory,root+'.'+randomUUID()+'.partial');
+    try{const file=await open(temporary,'wx',0o600);try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}try{await link(temporary,join(this.directory,root+'.bin'));}catch(error){if(error.code!=='EEXIST')throw error;}}finally{await unlink(temporary).catch(()=>{});}
+    await this.get(root,1024*1024);return root;
+  }
   async get(root,max=128*1024*1024){
     if(! /^[a-f0-9]{64}$/.test(root))throw new Error('Invalid content identity');
     let file;for(const ext of ['.bin','.json']){const candidate=join(this.directory,root+ext);try{await stat(candidate);file=candidate;break;}catch(e){if(e.code!=='ENOENT')throw e;}}
