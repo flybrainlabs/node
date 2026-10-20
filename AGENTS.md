@@ -2,21 +2,21 @@
 
 ## Project identity and repository ownership
 
-On 2026-10-12 the owner selected `flybrainlabs` as the project name and GitHub
-account and authorized recreating and publishing the component repositories.
-Use `flybrainlabs` in current project titles, repository descriptions, product
-branding, documentation, release notes and new technical explanations.
+`flybrainlabs` is the maintained project identity and GitHub owner. Use it for
+repository descriptions, source ownership and technical project identities.
+Use `flybrainwork` for website wordmarks, public page titles, metadata and
+reader-facing product introductions.
 
 - Maintained repositories: `web`, `node`, `miner`, `explorer`, `protocol`,
   `contracts`, `sdk`, `infra`, `research`, and `docs`, all under `flybrainlabs`.
 - Use the dedicated `github-flybrainlabs` SSH identity and pinned official GitHub
   host keys. Verify the SSH login and the CLI/API login separately; both must
   identify `flybrainlabs` before account mutations or publication.
-- The former GitHub accounts are retired publication targets. Do not push to
-  `mars99` or `flybrainwork`, use their connectors, transfer/delete their
-  repositories, or merge the historical draft pull request.
+- Publish only to the maintained repositories under `flybrainlabs`. Other
+  accounts and their connectors are not authorized publication targets. Do not
+  transfer/delete repositories or merge unrelated pull requests.
 - Honor actual platform access errors. Report failed or incomplete publication
-  accurately; do not retry using a retired identity.
+  accurately; use only the verified publication identity.
 - After each completed and verified update, commit and push automatically to its
   owning repository. Inspect remote changes first, preserve them and use normal
   fast forwards. No force pushes, empty commits or history deletion.
@@ -48,7 +48,7 @@ reading panels in normal document flow, with no overlays over the prose.
   them only under an explicit versioned compatibility plan.
 - Preserve model caches, OPFS results, browser profiles, signed identities,
   databases/WAL, private archives and backups. Never clear or redownload them
-  for a repository or branding migration.
+  during source maintenance.
 - Wallet secrets, SSH private keys, passwords, tokens, session credentials and
   customer data stay outside repositories and public builds. Never print them.
 - Scan staged files and publication history before pushing or deploying.
@@ -65,5 +65,5 @@ operator and external scientific acceptance require their actual evidence.
 
 Repository publication does not activate mainnet, formal FBW issuance, production
 payments or unconfigured asset routes. Those operations retain their own identity,
-funding and authorization gates. The existing official website and the separately
-authorized X account are not changed by selecting the GitHub project name.
+funding and authorization gates. The official website and separately authorized
+X account retain their existing publication permissions.
