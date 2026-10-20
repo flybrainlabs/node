@@ -101,3 +101,13 @@ attestations and advances tasks without a privileged relayer or minimum successf
 task interval. Existing V3 records and grants are retained. Public activation is
 pending an approved calibrated catalog and finite funding. See
 [the lifecycle specification](https://github.com/flybrainlabs/docs/blob/feat/contract-task-factory-v4-20261015/docs/CONTRACT_TASK_FACTORY_V4.md).
+
+## Scientific mining V5
+
+`tools/scientific_service_v5.mjs --config PRIVATE_CONFIG` runs configured, already
+funded rounds with one resident complete-model verifier, authenticated evidence
+uploads, durable leases and a signed transaction journal. It does not allocate a
+new reward budget. The finite signer fee allowances and private key/configuration
+paths must be supplied through the approved operator route. Two verifier keys of
+one operator are disclosed as one operator. Public V5 activation is pending.
+See the [operations guide](https://github.com/flybrainlabs/infra/blob/feat/scientific-mining-20261020/docs/SCIENTIFIC_MINING_V5_OPERATIONS.md).

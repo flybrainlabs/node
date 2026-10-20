@@ -96,7 +96,10 @@
     "tools/factory_pool_service_v4.mjs": "tools/factory_pool_service_v4.mjs",
     "tools/factory_pool_calibration_v4.mjs": "tools/factory_pool_calibration_v4.mjs",
     "tests/factory_pool_sbf_v4.mjs": "tests/factory_pool_sbf_v4.mjs",
-    "tests/factory_pool_capacity_v4.mjs": "tests/factory_pool_capacity_v4.mjs"
+    "tests/factory_pool_capacity_v4.mjs": "tests/factory_pool_capacity_v4.mjs",
+    "tools/exact_trial_worker.mjs": "tools/exact_trial_worker.mjs",
+    "tools/scientific_verifier_v5.mjs": "tools/scientific_verifier_v5.mjs",
+    "tools/scientific_service_v5.mjs": "tools/scientific_service_v5.mjs"
   },
   "project": "flybrainlabs"
 }
