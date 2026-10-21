@@ -44,8 +44,8 @@ export async function verifyFactorySubmission({reader,address,contentStore,model
   for(let j=0;j<manifest.trials.length;j++){
     const trial=manifest.trials[j],bytes=await contentStore.get(trial.resultRoot,round.goal.maxTrialBytes);
     if(bytes.length!==trial.bytes||await hash(bytes)!==trial.resultRoot)throw new ReplayError('RETRYABLE_INFRA_ERROR','Complete trial bytes unavailable');
-    const file=join(dir,'trial-'+j+'.bin');await writeFile(file,bytes,{mode:0o600});
-    const measurement=await replay(binary,[join(modelDir,'graph-v1.bin'),join(modelDir,'model-v0.bin'),join(dir,'goal.json'),join(dir,'input.json'),round.seeds[j],file,'--verify']);
+    const file=join(dir,'trial-'+j+'-'+randomUUID()+'.tmp');await writeFile(file,bytes,{mode:0o600});
+    let measurement;try{measurement=await replay(binary,[join(modelDir,'graph-v1.bin'),join(modelDir,'model-v0.bin'),join(dir,'goal.json'),join(dir,'input.json'),round.seeds[j],file,'--verify']);}finally{await unlink(file).catch(error=>{if(error.code!=='ENOENT')throw error;});}
     if(!['VALID','INVALID_RESULT'].includes(measurement.replayStatus)||measurement.fullReplay!==true||measurement.steps!==round.goal.steps)throw new ReplayError('LOCAL_MODEL_ERROR','Complete frozen replay not established');
     if(measurement.replayStatus!=='VALID'||!measurement.replayVerified||measurement.resultRoot!==trial.resultRoot||measurement.bytes!==trial.bytes||!measurement.metrics?.passed||hex(canonical(measurement.metrics))!==hex(canonical(trial.metrics)))valid=false;
     measurements.push(measurement);

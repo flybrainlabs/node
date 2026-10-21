@@ -7,7 +7,7 @@ import {fromHex,hex,decodeFactory,STATE} from '../web/task-factory-v4-codec.mjs'
 import {compileCatalog} from './compile_task_catalog_v4.mjs';
 import {addresses,meta,system} from './task_factory_v4_client.mjs';
 import {decodeGlobal} from './economy_v2_client.mjs';
-import {poolManifestMessageV4,verifyPoolGoalV4} from '../web/factory-pool-v4.mjs';
+import {poolManifestMessageV4,poolHistoryMessageV4,verifyPoolGoalV4} from '../web/factory-pool-v4.mjs';
 import {ed25519} from '@noble/curves/ed25519';
 import {scientificDescriptorHash} from '../web/task-factory-v4-science.mjs';
 const digest=v=>createHash('sha256').update(canonical(v)).digest('hex');
@@ -16,6 +16,7 @@ export class FactoryPoolSupplyV4 {
   constructor({queue,baseDeployment,trust,authority,transport,authorization}){
     Object.assign(this,{queue,baseDeployment,trust,authority,transport,authorization});this.a=addresses(baseDeployment.programId);this.checkedScience=new Set();
     if(baseDeployment.cluster!=='devnet'||!authority.publicKey.equals(new PublicKey(trust.authority))||!authorization||!/^[a-f0-9]{64}$/.test(authorization.evidenceHash)||!/^[1-9][0-9]{0,19}$/.test(authorization.rewardAtoms)||BigInt(authorization.rewardAtoms)>0xffffffffffffffffn)throw fail('POOL_FINITE_AUTHORIZATION');
+    if(authorization.maximumServingCatalogs!==undefined&&(!Number.isSafeInteger(authorization.maximumServingCatalogs)||authorization.maximumServingCatalogs<1||authorization.maximumServingCatalogs>127))throw fail('POOL_CATALOG_INVENTORY_CAPACITY');
   }
   async historical(identities){
     return this.queue.transaction(async c=>{for(const identity of identities){fromHex(identity);await c.query("INSERT INTO factory_pool_v4.science(identity,catalog_id,descriptor_hash,historical) VALUES($1,'historical','historical',true) ON CONFLICT(identity) DO NOTHING",[identity]);}});
@@ -30,8 +31,9 @@ export class FactoryPoolSupplyV4 {
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['pool-budget:'+this.trust.poolId]);
       const {rows:[old]}=await c.query('SELECT * FROM factory_pool_v4.catalogs WHERE id=$1',[factory]);
       if(old){if(old.plan_hash!==planHash)throw fail('POOL_PLAN_CONFLICT');return old.deployment;}
-      const {rows:[sum]}=await c.query("SELECT COALESCE(sum((deployment->>'budgetAtoms')::numeric),0)::text AS total FROM factory_pool_v4.catalogs WHERE pool_id=$1",[this.trust.poolId]);
+      const {rows:[sum]}=await c.query("SELECT COALESCE(sum((deployment->>'budgetAtoms')::numeric-released_authorization_atoms),0)::text AS total FROM factory_pool_v4.catalogs WHERE pool_id=$1",[this.trust.poolId]);
       if(BigInt(sum.total)+BigInt(compiled.budget)>BigInt(this.authorization.rewardAtoms))throw fail('POOL_REWARD_AUTHORIZATION_EXHAUSTED');
+      const {rows:[inventory]}=await c.query("SELECT count(*)::int AS n FROM factory_pool_v4.catalogs WHERE pool_id=$1 AND state IN ('reserved','registered') AND serving_state='serving'",[this.trust.poolId]);if(inventory.n>=(this.authorization.maximumServingCatalogs||64))throw fail('POOL_CATALOG_INVENTORY_CAPACITY');
       for(const d of stored.descriptors)await c.query('INSERT INTO factory_pool_v4.science(identity,catalog_id,descriptor_hash) VALUES($1,$2,$3)',[d.identity,factory,d.hash]);
       await c.query('INSERT INTO factory_pool_v4.catalogs(id,pool_id,deployment,plan_hash,compiled) VALUES($1,$2,$3,$4,$5)',[factory,this.trust.poolId,deployment,planHash,stored]);
       await this.queue.enqueue({id:'catalog:'+factory,kind:'catalog',scope:factory,payload:{factory,planHash,payer:this.authority.publicKey.toBase58()}},c);
@@ -73,12 +75,21 @@ export class FactoryPoolSupplyV4 {
     f=await read();if(f.uploaded!==f.count||f.state===STATE.DRAFT)throw fail('POOL_CATALOG_NOT_SEALED');await this.transport.reconcileAll(job);
     await this.queue.transaction(async c=>{await this.queue.guard(job,c,{lock:true});await c.query("UPDATE factory_pool_v4.catalogs SET state='registered',registered_at=COALESCE(registered_at,clock_timestamp()) WHERE id=$1",[d.factory]);await this.queue.event(this.trust.poolId,'catalog-registered',{factory:d.factory},c);});return {factory:d.factory,catalogRoot:d.catalogRoot};
   }
+  async history(factory,{now=Math.floor(Date.now()/1000),ttl=900}={}){
+    if(!Number.isSafeInteger(now)||now<0||!Number.isSafeInteger(ttl)||ttl<60||ttl>86400)throw fail('POOL_HISTORY_TTL');
+    new PublicKey(factory);let deployment;
+    if(factory===this.baseDeployment.factory)deployment=this.baseDeployment;
+    else deployment=(await this.queue.pool.query("SELECT deployment FROM factory_pool_v4.catalogs WHERE id=$1 AND pool_id=$2 AND state IN ('registered','retired')",[factory,this.trust.poolId])).rows[0]?.deployment;
+    if(!deployment)throw fail('POOL_HISTORY_NOT_FOUND');
+    const body={schema:'flybrainlabs-factory-pool-history-v4',...Object.fromEntries(['poolId','authority','genesisHash','programId','mint','policyHash','envelopeHash','anchorFactory'].map(k=>[k,this.trust[k]])),issuedAt:now,expiresAt:now+ttl,catalog:Object.fromEntries(['factory','factoryId','catalogRoot','budgetAtoms','taskCount','deadline'].map(k=>[k,deployment[k]]))};
+    return {...body,signature:Buffer.from(ed25519.sign(poolHistoryMessageV4(body),this.authority.secretKey.subarray(0,32))).toString('hex')};
+  }
   async manifest({anchor,now=Math.floor(Date.now()/1000),ttl=900}={}){
     if(!anchor||anchor.factory!==this.trust.anchorFactory||!Number.isInteger(ttl)||ttl<60||ttl>86400)throw fail('POOL_MANIFEST_ANCHOR');
     return this.queue.transaction(async c=>{
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['pool-manifest:'+this.trust.poolId]);
-      const rows=(await c.query("SELECT deployment FROM factory_pool_v4.catalogs WHERE pool_id=$1 AND state='registered' ORDER BY registered_at,id",[this.trust.poolId])).rows;
-      const catalogs=[anchor,...rows.map(r=>r.deployment)].map(d=>Object.fromEntries(['factory','factoryId','catalogRoot','budgetAtoms','taskCount','deadline'].map(k=>[k,d[k]])));
+      const rows=(await c.query("SELECT deployment FROM factory_pool_v4.catalogs WHERE pool_id=$1 AND state='registered' AND serving_state='serving' ORDER BY registered_at,id",[this.trust.poolId])).rows;
+      const catalogs=[...new Map([anchor,...rows.map(r=>r.deployment)].map(d=>[d.factory,d])).values()].map(d=>Object.fromEntries(['factory','factoryId','catalogRoot','budgetAtoms','taskCount','deadline'].map(k=>[k,d[k]])));
       if(catalogs.length>128)throw fail('POOL_MANIFEST_CAPACITY');
       const {rows:[last]}=await c.query('SELECT revision FROM factory_pool_v4.manifests WHERE pool_id=$1 ORDER BY revision DESC LIMIT 1',[this.trust.poolId]);
       const body={schema:'flybrainlabs-factory-pool-manifest-v4',...Object.fromEntries(['poolId','authority','genesisHash','programId','mint','policyHash','envelopeHash','anchorFactory'].map(k=>[k,this.trust[k]])),revision:Number(last?.revision||0)+1,issuedAt:now,expiresAt:now+ttl,catalogs};

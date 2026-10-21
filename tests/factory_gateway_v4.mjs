@@ -1,7 +1,7 @@
 // Real HTTP/filesystem and signed transaction boundary tests. Scientific
 // manifests are fixtures; these checks claim no full-model scientific result.
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,writeFile,mkdir,stat,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,mkdir,stat,rm,utimes} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {Keypair,PublicKey,Transaction,SystemProgram} from '@solana/web3.js';
@@ -33,6 +33,21 @@ assert.equal((await gateway.upload(req,url(0),root,trialBytes[0].subarray(0,128)
 await assert.rejects(gateway.upload(req,url(0),root,Buffer.alloc(128,9)),/CONFLICT/);
 assert.equal((await gateway.upload(req,url(128),root,trialBytes[0].subarray(128))).complete,true);assert.deepEqual(await readFile(join(contentDir,root+'.bin')),trialBytes[0]);assert.equal(contentEvents,1);checks.push('bounded sequential upload, duplicate retry, conflict rejection and hash-checked completion');
 const root2=trials[1].resultRoot,u2=new URL('http://localhost/?submission='+body.submission+'&offset=0&total=480');await assert.rejects(gateway.upload(req,u2,root2,Buffer.alloc(480,9)),/HASH/);await assert.rejects(stat(join(contentDir,root2+'.bin')));checks.push('bad complete bytes cannot enter the immutable content store');
+// An interrupted grant expires without losing its durable prefix. Renewal
+// restores only the same frozen objects; cleanup respects renewal and locks.
+await gateway.upload(req,u2,root2,trialBytes[1].subarray(0,100));
+const part2=join(config.partialDir,body.submission,root2+'.part'),now=Math.floor(Date.now()/1000),old=now-90000;
+gateway.db.prepare('UPDATE uploads SET expires_at=?,updated_at=? WHERE submission=?').run(old,old,body.submission);await utimes(part2,old,old);
+await assert.rejects(gateway.upload(req,u2,root2,trialBytes[1].subarray(0,100)),/RESERVATION_EXPIRED/);
+assert.equal((await gateway.cleanupPartials({dryRun:true,now})).actions.length,1);assert.equal((await stat(part2)).size,100);
+gateway.locks.set(root2,Promise.resolve());assert.equal((await gateway.cleanupPartials({now})).actions.length,0);gateway.locks.delete(root2);
+gateway.db.prepare('UPDATE uploads SET cleanup_until=? WHERE submission=?').run(now+60,body.submission);await assert.rejects(gateway.authorize(req,body),/CLEANUP_RETRY/);gateway.db.prepare('UPDATE uploads SET cleanup_until=0 WHERE submission=?').run(body.submission);
+await gateway.authorize(req,body);assert.equal((await gateway.cleanupPartials({now})).actions.length,0);assert.equal((await stat(part2)).size,100);
+assert.equal((await gateway.upload(req,new URL('http://localhost/?submission='+body.submission+'&offset=100&total=480'),root2,trialBytes[1].subarray(100))).complete,true);
+const manifestRoot=await hash(canonical(manifest)),manifestSize=canonical(manifest).length,manifestUrl=new URL('http://localhost/?submission='+body.submission+'&offset=0&total='+manifestSize);await gateway.upload(req,manifestUrl,manifestRoot,Buffer.from(canonical(manifest)).subarray(0,100));const manifestPart=join(config.partialDir,body.submission,manifestRoot+'.part');await utimes(manifestPart,old,old);gateway.db.prepare('UPDATE uploads SET expires_at=?,updated_at=? WHERE submission=?').run(old,old,body.submission);
+const orphan=join(config.partialDir,other.publicKey.toBase58());await mkdir(orphan);await writeFile(join(orphan,root2+'.part'),Buffer.alloc(50));await utimes(join(orphan,root2+'.part'),old,old);
+assert.equal((await gateway.cleanupPartials({now})).actions.length,1);await assert.rejects(stat(manifestPart),{code:'ENOENT'});assert.equal((await stat(join(orphan,root2+'.part'))).size,50);assert.deepEqual(await readFile(join(contentDir,root+'.bin')),trialBytes[0]);await gateway.storageInventory();assert(gateway.storageStats().unreservedPartialBytes>=50);
+checks.push('Expired uploads resume the original prefix after reauthorization; dry run, active cleanup lease, upload lock and renewed grant protect bytes; cleanup preserves immutable and unknown content');
 const rpc=(ixs,payer=miner)=>{const tx=new Transaction({feePayer:payer.publicKey,recentBlockhash:Keypair.generate().publicKey.toBase58()}).add(...ixs);tx.sign(payer);return {jsonrpc:'2.0',id:1,method:'sendTransaction',params:[tx.serialize().toString('base64'),{encoding:'base64',maxRetries:0,preflightCommitment:'finalized',skipPreflight:false}]};};
 const good=rpc([instruction(program,[meta(factory),meta(task,true),meta(address,true),meta(miner.publicKey,false,true)],4,{commitment:committed,beneficiary:miner.publicKey})]);assert.equal(gateway.reviewRpc(good,{wallet:miner.publicKey.toBase58()}),good);
 assert.throws(()=>gateway.reviewRpc(good,null));assert.throws(()=>gateway.reviewRpc(good,{wallet:other.publicKey.toBase58()}));

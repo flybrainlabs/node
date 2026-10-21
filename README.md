@@ -111,3 +111,20 @@ new reward budget. The finite signer fee allowances and private key/configuratio
 paths must be supplied through the approved operator route. Two verifier keys of
 one operator are disclosed as one operator. Public V5 activation is pending.
 See the [operations guide](https://github.com/flybrainlabs/infra/blob/feat/scientific-mining-20261020/docs/SCIENTIFIC_MINING_V5_OPERATIONS.md).
+
+## Continuous V4 mining candidate
+
+Independent keeper/supply/replay/payment lanes, reentrant schema, historical recovery and storage lifecycle. The feature branch is `feat/continuous-mining-20261021`.
+
+Run from the assembled workspace with the existing pinned dependencies:
+
+```sh
+node tests/factory_gateway_v4.mjs
+node tests/factory_pool_capacity_v4.mjs
+FLYBRAIN_POOL_TEST_SOCKET=/path/to/isolated/socket node tests/factory_pool_recovery_v4.mjs
+FLYBRAIN_POOL_TEST_SOCKET=/path/to/isolated/socket node tests/factory_pool_sbf_v4.mjs
+```
+
+See `docs/CONTINUOUS_MINING_V4_20261021.md` and the infrastructure
+`docs/CONTINUOUS_MINING_V4_20261021_ACCEPTANCE.json` for evidence boundaries.
+Source publication does not establish live acceptance or activate the service.

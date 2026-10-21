@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS factory_pool_v4.jobs (
   created_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 CREATE INDEX IF NOT EXISTS pool_jobs_ready ON factory_pool_v4.jobs(kind,priority DESC,ready_at,created_at) WHERE state IN ('ready','leased');
+-- Additive upgrade; frozen payloads, signed bytes and old states are retained.
+ALTER TABLE factory_pool_v4.jobs DROP CONSTRAINT IF EXISTS jobs_kind_check;
+ALTER TABLE factory_pool_v4.jobs ADD CONSTRAINT jobs_kind_check CHECK (kind IN ('catalog','calibrate','replay','payment','input','keeper'));
+ALTER TABLE factory_pool_v4.jobs ADD COLUMN IF NOT EXISTS quarantined boolean NOT NULL DEFAULT false;
+ALTER TABLE factory_pool_v4.jobs ADD COLUMN IF NOT EXISTS reconciled_at timestamptz;
 CREATE TABLE IF NOT EXISTS factory_pool_v4.transactions (
   id text PRIMARY KEY,
   job_id text NOT NULL REFERENCES factory_pool_v4.jobs(id),
@@ -57,6 +62,22 @@ CREATE TABLE IF NOT EXISTS factory_pool_v4.manifests (
   hash text NOT NULL,
   body jsonb NOT NULL,
   PRIMARY KEY(pool_id,revision)
+);
+ALTER TABLE factory_pool_v4.catalogs ADD COLUMN IF NOT EXISTS serving_state text NOT NULL DEFAULT 'serving' CHECK (serving_state IN ('serving','draining','retired'));
+ALTER TABLE factory_pool_v4.catalogs ADD COLUMN IF NOT EXISTS observed_at timestamptz;
+ALTER TABLE factory_pool_v4.catalogs ADD COLUMN IF NOT EXISTS released_authorization_atoms numeric(20,0) NOT NULL DEFAULT 0 CHECK (released_authorization_atoms>=0);
+CREATE TABLE IF NOT EXISTS factory_pool_v4.demand (
+  pool_id text NOT NULL, wallet text NOT NULL, session_id text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  PRIMARY KEY(pool_id,wallet,session_id)
+);
+CREATE INDEX IF NOT EXISTS pool_demand_live ON factory_pool_v4.demand(pool_id,expires_at);
+CREATE TABLE IF NOT EXISTS factory_pool_v4.job_costs (
+  job_id text PRIMARY KEY REFERENCES factory_pool_v4.jobs(id),
+  background_count integer NOT NULL CHECK (background_count BETWEEN 1 AND 64),
+  estimate_ms bigint NOT NULL CHECK (estimate_ms>0),
+  deadline bigint NOT NULL,
+  observed_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 CREATE TABLE IF NOT EXISTS factory_pool_v4.events (
   sequence bigserial PRIMARY KEY,

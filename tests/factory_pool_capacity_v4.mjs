@@ -30,3 +30,15 @@ const calibrationQueue={pool:{query:async()=>({rows:[{total:'3200'}]})},enqueue:
 const budgeted=new FactoryPoolCalibrationV4({queue:calibrationQueue,supply:{trust:{poolId:'fixture'},authorization:{evidenceHash:'e'.repeat(64),rewardAtoms:'3200'}},policy:{groups:16,deadlineSeconds:86400,toolSha256:'f'.repeat(64),evidenceHash:'e'.repeat(64),rules:{rewardAtoms:'200'}}});
 await budgeted.schedule(16);assert.equal(budgeted.supplyStatus.code,'POOL_REWARD_AUTHORIZATION_EXHAUSTED');
 console.log(JSON.stringify({passed:true,checks:['Calibration and full replay share one native lane on a small host','A failed calibration releases capacity without losing the queued successor','Explicit parallel configuration remains available','Stopped services reject queued native work','Fully allocated rewards stop future calibration without affecting funded task replay'],chainWrites:0}));
+
+// Full, paused or expired ACTIVE catalogs still consume the active safety
+// ceiling. Expiring an existing slot does not allocate a new active factory.
+{
+ const {FactoryPoolKeeperV4}=await import('../tools/factory_pool_keeper_v4.mjs');const jobs=[];
+ const keeper=new FactoryPoolKeeperV4({config:{openTaskPolicy:{minimum:1,target:2,maximum:4}},signers:[{publicKey:{toBase58:()=> 'fixture-payer'}}],queue:{enqueue:async job=>jobs.push(job)}});
+ const catalog={deployment:{factory:'fixture-factory'}},scheduled={state:1,paused:false,activeIndex:0xffffffff,nextIndex:0,count:1,deadline:1000n};
+ assert.equal(await keeper.schedule(catalog,scheduled,null,100,{demand:1,open:0,active:4}),false);assert.equal(jobs.length,0);
+ const expired={state:1,index:0,attempt:0,queue:[],revealDeadline:50n,verifyDeadline:60n};
+ assert(await keeper.schedule(catalog,{...scheduled,activeIndex:0,nextIndex:1},expired,100,{demand:1,open:0,active:4}));assert.equal(jobs[0].payload.operation,'expire');
+}
+console.log('Active factory ceiling includes nonclaimable work; safe expiry can reuse an existing slot.');

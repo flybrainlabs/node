@@ -10,6 +10,8 @@ import {createAssociatedTokenAccountIdempotentInstruction,getAssociatedTokenAddr
 import {FactoryPoolQueueV4,reserveTargetV4,poolReplenishmentV4} from './factory_pool_queue_v4.mjs';
 import {FactoryPoolTransportV4} from './factory_pool_transport_v4.mjs';
 import {FactoryPoolSupplyV4} from './factory_pool_supply_v4.mjs';
+import {FactoryPoolKeeperV4} from './factory_pool_keeper_v4.mjs';
+import {replayCapacityV4,reconcilePoolBlockedV4} from './factory_pool_maintenance_v4.mjs';
 import {FactoryPoolCalibrationV4} from './factory_pool_calibration_v4.mjs';
 import {FactoryGatewayV4,serveFactoryGatewayV4} from './factory_gateway_v4.mjs';
 import {verifyFactorySubmission,LocalFactoryContentStore,voteInstructions} from './factory_verifier_v4.mjs';
@@ -29,6 +31,7 @@ export class FactoryPoolServiceV4 {
     Object.assign(this,{config,queue,connection,signers,supply,calibration,verify,gatewayFactory});this.contexts=new Map();this.owner=randomUUID();this.stopped=false;this.scan=0;this.eventClients=new Set();this.eventCursor='0';
     if(config.deployment.cluster!=='devnet'||!Number.isInteger(config.replayConcurrency)||config.replayConcurrency<1||config.replayConcurrency>8||signers.length!==2||!Number.isInteger(config.maxTransactionsPerVerifier)||config.maxTransactionsPerVerifier<1||config.maxTransactionsPerVerifier>4096)throw fail('POOL_RUNTIME_BOUNDS');
     if(config.serializeCalibrationWithReplay&&config.replayConcurrency!==1)throw fail('POOL_SHARED_NATIVE_LANE');
+    this.keeper=new FactoryPoolKeeperV4(this);
   }
   async nativeWork(operation){
     if(!this.config.serializeCalibrationWithReplay)return operation();
@@ -52,19 +55,28 @@ export class FactoryPoolServiceV4 {
   }
   async gateway(factory){return factory?this.contexts.get(factory)?.gateway:null;}
   async input(req,body){
-    const c=this.contexts.get(body.factory);if(!c||!/^[-a-f0-9]{36}$/.test(body.sessionId||'')||!['claim','renew','release'].includes(body.action))throw fail('POOL_INPUT_SCOPE');
+    const c=this.contexts.get(body.factory);if(!c||!/^[-a-f0-9]{36}$/.test(body.sessionId||'')||!['claim','renew','release','demand','idle'].includes(body.action))throw fail('POOL_INPUT_SCOPE');
     const session=await c.gateway.authenticate(req);c.gateway.rate('inputs:'+session.wallet,120);const owner=session.wallet+':'+body.sessionId;
+    if(['demand','idle'].includes(body.action)){
+      if(body.action==='idle')await this.queue.pool.query('DELETE FROM factory_pool_v4.demand WHERE pool_id=$1 AND wallet=$2 AND session_id=$3',[this.config.poolTrust.poolId,session.wallet,body.sessionId]);
+      else await this.queue.pool.query("INSERT INTO factory_pool_v4.demand(pool_id,wallet,session_id,expires_at) VALUES($1,$2,$3,clock_timestamp()+$4*interval '1 second') ON CONFLICT(pool_id,wallet,session_id) DO UPDATE SET expires_at=EXCLUDED.expires_at",[this.config.poolTrust.poolId,session.wallet,body.sessionId,this.keeper.policy.demandTtlSeconds]);
+      return {ok:true};
+    }
+
     if(body.action!=='claim'){
       if(!/^input:[a-f0-9]{64}:[a-f0-9]{64}$/.test(body.id||'')||!/^\d{1,19}$/.test(String(body.fence)))throw fail('POOL_INPUT_SCOPE');
       const job=(await this.queue.pool.query('SELECT * FROM factory_pool_v4.jobs WHERE id=$1',[body.id])).rows[0];if(!job||job.scope!==body.factory||job.lease_owner!==owner||job.fence!==String(body.fence))throw fail('POOL_INPUT_SCOPE');
       if(body.action==='renew')await this.queue.renew(job,120);else await this.queue.retry(job,{delaySeconds:5,code:'INPUT_RELEASED'});return {ok:true};
     }
-    const backlog=(await this.queue.pool.query("SELECT count(*)::int AS n FROM factory_pool_v4.jobs WHERE kind='replay' AND state IN ('ready','leased','blocked') AND scope=ANY($1::text[])",[[...this.contexts.keys()]])).rows[0].n;
-    if(backlog>=(this.config.maxPendingReplays||8))return {busy:true,reason:'verification-capacity'};
+    const capacity=await replayCapacityV4(this);
+    if(capacity.pendingJobs>=(this.config.maxPendingReplays||8))return {busy:true,reason:'verification-capacity',capacity};
     if(!c.inputRound||Date.now()-c.inputRoundAt>5000){
       if(!c.inputSync)c.inputSync=(async()=>{const f=await c.reader.factory();if(f.activeIndex===NONE||f.paused)throw fail('POOL_INPUT_CLOSED');const t=await c.reader.task(f.activeIndex),spec=JSON.parse(new TextDecoder().decode(await new LocalFactoryContentStore(this.config.contentDir).get(hex(t.descriptor.content),1024*1024)));c.inputRound=await makeRound({program:c.deployment.programId,genesis:c.deployment.genesisHash,factoryAddress:c.deployment.factory,taskAddress:c.reader.a.task(c.deployment.factory,t.index).toBase58(),factory:f,task:t,spec});const slot=await this.connection.getSlot('finalized');c.inputChainTime=await this.connection.getBlockTime(slot);c.inputRoundAt=Date.now();})().finally(()=>c.inputSync=null);await c.inputSync;
     }
     const round=c.inputRound;if(round.roundId!==body.roundId||c.inputChainTime===null||c.inputChainTime+(Date.now()-c.inputRoundAt)/1000>=round.pre.claimDeadline)throw fail('POOL_INPUT_CLOSED');validateInput(round.goal,body.input);
+    const compute=this.config.computeP95Seconds||90,confirm=this.config.confirmationMarginSeconds||60,replay=capacity.fallbackReplaySeconds*(round.pre.requiredBackgrounds/2)*this.signers.length;
+    const estimated=compute+capacity.queuedSeconds/this.config.replayConcurrency+capacity.leasedInputs*replay+replay+confirm+(this.config.uploadP95Seconds||120);
+    if(c.inputChainTime+(Date.now()-c.inputRoundAt)/1000+estimated>=round.pre.verificationDeadline)return {busy:true,reason:'verification-deadline-capacity',capacity:{...capacity,estimatedTotalSeconds:estimated}};
     const candidate=await candidateId(round.roundId,body.input),id='input:'+round.roundId+':'+candidate,payload={factory:body.factory,roundId:round.roundId,candidateId:candidate,input:body.input};
     const old=await this.queue.enqueue({id,kind:'input',scope:body.factory,payload});let lease;
     if(old.state==='leased'&&old.lease_owner===owner&&new Date(old.lease_until).getTime()>Date.now()){await this.queue.renew(old,120);lease=old;}else lease=await this.queue.claim('input',owner,120,id);
@@ -85,39 +97,66 @@ export class FactoryPoolServiceV4 {
     if(Date.now()-(this.heartbeatAt||0)>15000){this.heartbeatAt=Date.now();for(const res of this.eventClients)if(!res.write(': heartbeat\n\n'))res.destroy();}
   }
   async discover(){
-    const rows=(await this.queue.pool.query("SELECT deployment FROM factory_pool_v4.catalogs WHERE pool_id=$1 AND state='registered' ORDER BY registered_at,id",[this.config.poolTrust.poolId])).rows;
+    if(this.discoveryPending)return this.discoveryPending;
+    this.discoveryPending=this.discoverInternal().catch(error=>{this.lastDiscoveryError='POOL_DISCOVERY_RETRY';this.lastDiscoveryFailureAt=Date.now();throw error;}).finally(()=>this.discoveryPending=null);return this.discoveryPending;
+  }
+  async discoverInternal(){
+    const rows=(await this.queue.pool.query("SELECT deployment FROM factory_pool_v4.catalogs WHERE pool_id=$1 AND state='registered' AND serving_state<>'retired' ORDER BY registered_at,id",[this.config.poolTrust.poolId])).rows;
     for(const {deployment}of rows)await this.context(deployment);
-    const slot=await this.connection.getSlot('finalized'),now=await this.connection.getBlockTime(slot);
-    const observations=this.config.capacityObservations,runway=observations?(observations.prepareP95Seconds+observations.registrationP95Seconds)*(observations.safetyFactor||2):0;
-    let remaining=0,openCatalogs=0;for(const c of this.contexts.values()){
-      const f=await c.reader.factory();
+    const slot=await this.connection.getSlot('finalized'),now=await this.connection.getBlockTime(slot);if(!Number.isSafeInteger(now))throw fail('POOL_CHAIN_TIME');
+    const demand=(await this.queue.pool.query('SELECT count(*)::int AS n FROM factory_pool_v4.demand WHERE pool_id=$1 AND expires_at>clock_timestamp()',[this.config.poolTrust.poolId])).rows[0].n;
+    await this.queue.pool.query('DELETE FROM factory_pool_v4.demand WHERE expires_at<clock_timestamp()');
+    const observations=this.config.capacityObservations,states=[];let remaining=0,openCatalogs=0,activeCatalogs=0,openableCatalogs=0,manifestDirty=false;
+    for(const c of this.contexts.values()){
+      const f=await c.reader.factory(),t=f.activeIndex===NONE?null:await c.reader.task(f.activeIndex);states.push({c,f,t});
+      if(f.state===STATE.RUNNING&&f.activeIndex!==NONE)activeCatalogs++;
       remaining+=Math.max(0,f.count-f.nextIndex)+(f.activeIndex!==NONE?1:0);
-      if(f.state===STATE.RUNNING&&!f.paused&&f.activeIndex===NONE&&f.nextIndex<f.count)openCatalogs++;
-      if(f.activeIndex!==NONE&&!f.paused){
-        const t=await c.reader.task(f.activeIndex);
-        if(f.state===STATE.RUNNING&&Number.isSafeInteger(now)&&now+runway<Number(t.claimDeadline))openCatalogs++;
-        const recovery=factoryTaskRecoveryV4(f,t,now);
-        if(recovery?.kind==='finalize')await this.queue.enqueue({id:'finalize:'+c.reader.a.task(c.deployment.factory,t.index).toBase58()+':'+t.attempt,kind:'payment',scope:c.deployment.factory,payload:{operation:'finalize',factory:c.deployment.factory,index:t.index,attempt:t.attempt,submission:recovery.submission,payer:this.signers[0].publicKey.toBase58()},priority:20});
-        for(const e of t.queue)if(e.state===STATE.REVEALED){
-          const address=new PublicKey(e.submission).toBase58(),s=await c.reader.submission(address,c.reader.a.task(c.deployment.factory,t.index));
-          for(const signer of this.signers){const index=f.verifiers.findIndex(v=>new PublicKey(v).equals(signer.publicKey));if((s.validVotes|s.invalidVotes)&1<<index)continue;const payer=signer.publicKey.toBase58();await this.queue.enqueue({id:'replay:'+address+':'+payer,kind:'replay',scope:c.deployment.factory,payload:{factory:c.deployment.factory,submission:address,payer},priority:10});}
+      if(f.state===STATE.RUNNING&&!f.paused&&f.activeIndex===NONE&&f.nextIndex<f.count&&now+this.keeper.policy.minimumWindowSeconds<Number(f.deadline))openableCatalogs++;
+      if([STATE.EXHAUSTED,STATE.CLOSED].includes(f.state)){
+        const unresolved=(await this.queue.pool.query("SELECT count(*)::int AS n FROM factory_pool_v4.jobs WHERE scope=$1 AND kind<>'input' AND state<>'done'",[c.deployment.factory])).rows[0].n;
+        const lifecycle=BigInt(f.acceptedUnpaid)>0n||unresolved?'draining':'retired';
+        const changed=await this.queue.pool.query('UPDATE factory_pool_v4.catalogs SET serving_state=$2,observed_at=clock_timestamp(),released_authorization_atoms=GREATEST(released_authorization_atoms,$3) WHERE id=$1 AND (serving_state<>$2 OR released_authorization_atoms<$3)',[c.deployment.factory,lifecycle,String(f.state===STATE.CLOSED?f.refunded:0n)]);
+        if(changed.rowCount)manifestDirty=true;
+        c.retired=lifecycle==='retired';
+      }
+
+      if(f.state===STATE.RUNNING&&!f.paused&&t?.state===STATE.ACTIVE&&now+this.keeper.policy.minimumWindowSeconds<Number(t.claimDeadline)&&t.queue.length<8)openCatalogs++;
+      if(t&&t.state===STATE.ACTIVE&&now<=Number(t.verifyDeadline))for(const e of t.queue)if(e.state===STATE.REVEALED){
+        const address=new PublicKey(e.submission).toBase58(),submission=await c.reader.submission(address,c.reader.a.task(c.deployment.factory,t.index));
+        for(const signer of this.signers){
+          const index=f.verifiers.findIndex(v=>new PublicKey(v).equals(signer.publicKey));if((submission.validVotes|submission.invalidVotes)&1<<index)continue;
+          const payer=signer.publicKey.toBase58(),id='replay:'+address+':'+payer;
+          await this.queue.enqueue({id,kind:'replay',scope:c.deployment.factory,payload:{factory:c.deployment.factory,submission:address,payer},priority:10});
+          await this.queue.pool.query('INSERT INTO factory_pool_v4.job_costs(job_id,background_count,estimate_ms,deadline) VALUES($1,$2,$3,$4) ON CONFLICT(job_id) DO NOTHING',[id,t.descriptor.seeds.length,Math.ceil((this.config.replayP95Seconds||90)*1000*t.descriptor.seeds.length/2),String(t.verifyDeadline)]);
         }
       }
-      // Bounded historical scan; each payment retains its own immutable job.
       for(let n=0;n<Math.min(4,f.nextIndex);n++){
-        const index=c.paymentCursor++%f.nextIndex;if(index===f.activeIndex)continue;const t=await c.reader.task(index);if(t.state!==STATE.SOLVED||t.paid)continue;
+        const index=c.paymentCursor++%f.nextIndex;if(index===f.activeIndex)continue;const previous=await c.reader.task(index);if(previous.state!==STATE.SOLVED||previous.paid)continue;
         await this.queue.enqueue({id:'payment:'+c.deployment.factory+':'+index,kind:'payment',scope:c.deployment.factory,payload:{factory:c.deployment.factory,index,payer:this.signers[0].publicKey.toBase58()}});
       }
     }
+    let plannedOpen=openCatalogs,plannedActive=activeCatalogs;
+    for(const {c,f,t}of states)if(await this.keeper.schedule(c,f,t,now,{demand,open:plannedOpen,active:plannedActive})){plannedOpen++;if(f.activeIndex===NONE)plannedActive++;}
     const prepared=(await this.queue.pool.query("SELECT COALESCE(sum((deployment->>'taskCount')::int),0)::int AS n,count(*)::int AS catalogs FROM factory_pool_v4.catalogs WHERE pool_id=$1 AND state='reserved'",[this.config.poolTrust.poolId])).rows[0];
-    if(this.calibration&&observations){const target=reserveTargetV4(observations),room=poolReplenishmentV4({remaining,preparedTasks:prepared.n,openCatalogs,preparedCatalogs:prepared.catalogs,target:target.target,minimumOpenCatalogs:this.config.minimumOpenCatalogs||2,groups:this.calibration.policy.groups,maximum:observations.maximum||4096});this.reserveStatus={...target,...room,withinCapacity:target.withinCapacity&&room.withinCapacity,remaining,preparedTasks:prepared.n,openCatalogs};if(target.withinCapacity&&room.withinCapacity&&room.shortage)await this.calibration.schedule(room.shortage);}
-    if(this.supply){
-      let needs=true;try{needs=(await this.manifest()).expiresAt<Date.now()/1000+300;}catch{}
-      if(needs||rows.length!==this.publishedCatalogCount){await this.supply.manifest({anchor:this.config.deployment});this.publishedCatalogCount=rows.length;}
+    if(this.calibration&&observations){
+      const target=reserveTargetV4(observations),room=poolReplenishmentV4({remaining,preparedTasks:prepared.n,openCatalogs:Math.max(plannedOpen,openableCatalogs),preparedCatalogs:prepared.catalogs,target:target.target,minimumOpenCatalogs:this.config.minimumOpenCatalogs||2,groups:this.calibration.policy.groups,maximum:observations.maximum||4096});
+      this.reserveStatus={...target,...room,withinCapacity:target.withinCapacity&&room.withinCapacity,remaining,preparedTasks:prepared.n,openCatalogs,openableCatalogs,plannedOpen};
+      if(target.withinCapacity&&room.withinCapacity&&room.shortage)await this.calibration.schedule(room.shortage);
     }
-    const {rows:[counts]}=await this.queue.pool.query("SELECT count(*) FILTER (WHERE kind='replay' AND state IN ('ready','leased'))::int AS pending,count(*) FILTER (WHERE state='blocked' AND NOT(kind='calibrate' AND result->>'code'='POOL_REWARD_AUTHORIZATION_EXHAUSTED'))::int AS blocked,count(*) FILTER (WHERE state='blocked' AND kind='calibrate' AND result->>'code'='POOL_REWARD_AUTHORIZATION_EXHAUSTED')::int AS rewardCapacityPaused FROM factory_pool_v4.jobs WHERE scope=ANY($1::text[])",[[...this.contexts.keys(),this.config.poolTrust.poolId]]);
-    this.root.gateway.verifierStatus={status:counts.blocked?'reconciliation-required':counts.pending?'replay-queue-active':'waiting-for-revealed-submission',at:new Date().toISOString(),serialReplay:this.config.replayConcurrency===1,maxReplayProcesses:this.config.replayConcurrency,nativeModelChecked:!!this.nativeReady,trustedKeys:2,independentOperators:1,pending:counts.pending,blocked:counts.blocked,catalogs:this.contexts.size,remainingTasks:remaining,openCatalogs,reserve:this.reserveStatus||null,supply:this.calibration?.supplyStatus||(counts.rewardCapacityPaused?{code:'POOL_REWARD_AUTHORIZATION_EXHAUSTED'}:null)};
+    if(this.supply){let needs=true;try{needs=(await this.manifest()).expiresAt<Date.now()/1000+300;}catch{}if(needs||manifestDirty||rows.length!==this.publishedCatalogCount){await this.supply.manifest({anchor:this.config.deployment});this.publishedCatalogCount=rows.length;}}
+    const {rows:[counts]}=await this.queue.pool.query("SELECT count(*) FILTER (WHERE kind='replay' AND state IN ('ready','leased'))::int AS pending,count(*) FILTER (WHERE state='blocked' AND NOT quarantined)::int AS blocked,count(*) FILTER (WHERE state='blocked' AND quarantined)::int AS quarantined,count(*) FILTER (WHERE state='blocked' AND kind='calibrate' AND result->>'code'='POOL_REWARD_AUTHORIZATION_EXHAUSTED')::int AS rewardCapacityPaused FROM factory_pool_v4.jobs WHERE scope=ANY($1::text[])",[[...this.contexts.keys(),this.config.poolTrust.poolId]]);
+    const scopes=[...this.contexts.keys(),this.config.poolTrust.poolId];
+    this.queueMetrics=(await this.queue.pool.query("SELECT kind,state,count(*)::int AS count,COALESCE(max(EXTRACT(epoch FROM clock_timestamp()-created_at)),0)::float8 AS oldest_seconds FROM factory_pool_v4.jobs WHERE scope=ANY($1::text[]) AND state<>'done' GROUP BY kind,state ORDER BY kind,state",[scopes])).rows;
+    this.replayMetrics=(await this.queue.pool.query('SELECT count(*)::int AS samples,percentile_cont(0.5) WITHIN GROUP(ORDER BY r.wall_ms)::float8 AS p50_ms,percentile_cont(0.95) WITHIN GROUP(ORDER BY r.wall_ms)::float8 AS p95_ms FROM factory_pool_v4.replays r JOIN factory_pool_v4.jobs j ON j.id=r.job_id WHERE j.scope=ANY($1::text[])',[scopes])).rows[0];
+    this.inventoryMetrics={actualOpen:openCatalogs,actualActive:activeCatalogs,plannedActive,openableCatalogs,plannedOpen,scheduledAndOpenTasks:remaining,preparedTasks:prepared.n};
+    this.lastDiscoveryAt=Date.now();this.lastDiscoveryError=null;
+    this.root.gateway.verifierStatus={status:counts.blocked?'reconciliation-required':counts.pending?'replay-queue-active':openCatalogs?'open-work-available':'no-open-work',at:new Date().toISOString(),serialReplay:this.config.replayConcurrency===1,maxReplayProcesses:this.config.replayConcurrency,nativeModelChecked:!!this.nativeReady,trustedKeys:2,independentOperators:1,pending:counts.pending,blocked:counts.blocked,quarantined:counts.quarantined,catalogs:this.contexts.size,remainingTasks:remaining,openCatalogs,plannedOpen,demand,reserve:this.reserveStatus||null,capacity:await replayCapacityV4(this),supply:this.calibration?.supplyStatus||(counts.rewardCapacityPaused?{code:'POOL_REWARD_AUTHORIZATION_EXHAUSTED'}:null)};
+    for(const [factory,c]of this.contexts)if(c.retired&&c!==this.root){c.gateway.close();this.contexts.delete(factory);}
     await this.notify();
+  }
+  health(){
+    const age=this.lastDiscoveryAt?Date.now()-this.lastDiscoveryAt:null,ready=!this.lastDiscoveryError&&age!==null&&age<15000;
+    return {schema:'flybrainlabs-factory-health-v4',transportReady:true,capabilities:['continuous-v4-20261021','signed-catalog-history-v4','resumable-upload-v4'],businessReady:ready&&!this.lastWorkerError,lastWorkerError:this.lastWorkerError||null,lastMaintenanceError:this.lastMaintenanceError||null,queues:this.queueMetrics||[],replayLatency:this.replayMetrics||null,inventory:this.inventoryMetrics||null,lastDiscoveryAt:this.lastDiscoveryAt||null,discoveryAgeMs:age,lastDiscoveryError:this.lastDiscoveryError||null,lastDiscoveryFailureAt:this.lastDiscoveryFailureAt||null,taskAuthority:'contract',catalogCreation:!!this.supply,storage:this.root.gateway.storageStats?.()||null,verifier:this.root.gateway.verifierStatus||{status:'not-started'}};
   }
   async replay(job){return this.nativeWork(()=>this.replayInternal(job));}
   async replayInternal(job){
@@ -126,6 +165,8 @@ export class FactoryPoolServiceV4 {
     const state=async()=>{const s=await reader.account(address,decodeSubmission),t=await reader.account(new PublicKey(s.task),decodeTask),f=await reader.factory(),index=f.verifiers.findIndex(v=>new PublicKey(v).equals(signer.publicKey));if(index<0||!reader.a.task(reader.expected.factoryAddress,t.index).equals(new PublicKey(s.task))||!new PublicKey(t.factory).equals(reader.expected.factoryAddress))throw fail('POOL_REPLAY_SCOPE');return {s,t,f,index};};
     let {s,t,f,index}=await state();if((s.validVotes|s.invalidVotes)&1<<index)return {alreadyVoted:true,...await this.transport(signer).reconcile(job,'vote')};
     if(s.state!==STATE.REVEALED||t.state!==STATE.ACTIVE||t.attempt!==s.attempt||f.activeIndex!==t.index)return {noLongerEligible:true};
+    const eligibleTime=async()=>{const slot=await this.connection.getSlot('finalized'),now=await this.connection.getBlockTime(slot);return Number.isSafeInteger(now)&&now<=Number(t.verifyDeadline);};
+    if(!await eligibleTime())return {deadlinePassed:true};
     let {rows:[saved]}=await this.queue.pool.query('SELECT * FROM factory_pool_v4.replays WHERE job_id=$1',[job.id]);
     if(!saved){
       const started=performance.now(),verified=await this.verify({reader,address,contentStore:new LocalFactoryContentStore(this.config.contentDir),modelDir:this.config.modelDir,outputDir:join(this.config.outputDir,c.deployment.factory,signer.publicKey.toBase58(),'lease-'+job.fence),binary:this.config.binary});
@@ -134,6 +175,7 @@ export class FactoryPoolServiceV4 {
       saved=(await this.queue.pool.query('SELECT * FROM factory_pool_v4.replays WHERE job_id=$1',[job.id])).rows[0];
     }
     ({s,t,f,index}=await state());if((s.validVotes|s.invalidVotes)&1<<index)return {alreadyVoted:true,...await this.transport(signer).reconcile(job,'vote')};
+    if(!await eligibleTime())return {deadlinePassed:true};
     const report=saved.report;
     if(await hash(canonical(report))!==saved.report_hash||report.submission!==address.toBase58()||report.task!==new PublicKey(s.task).toBase58()||report.attempt!==s.attempt||report.completeTrials!==t.descriptor.seeds.length||report.measurements?.length!==report.completeTrials||report.fullReplay!==true||s.state!==STATE.REVEALED||t.state!==STATE.ACTIVE||t.attempt!==s.attempt||f.activeIndex!==t.index)return {noLongerEligible:true};
     const reportHash=fromHex(saved.report_hash),verified={factory:f,task:t,submission:s,report,reportHash,message:voteMessage(reader.program,f,t,address,s,report.valid,reportHash,report.completeTrials)},transport=this.transport(signer);
@@ -155,28 +197,31 @@ export class FactoryPoolServiceV4 {
     return this.transport(payer).run(job,'payment',[createAssociatedTokenAccountIdempotentInstruction(payer.publicKey,ata,beneficiary,mint),instruction(reader.program,[meta(reader.a.global),meta(factory,true),meta(reader.a.task(factory,t.index),true),meta(new PublicKey(t.winner)),meta(reader.a.pool(0),true),meta(ata,true),meta(TOKEN_PROGRAM_ID)],9)],async()=>(await reader.task(t.index)).paid);
   }
   async work(kind,handler){
+    if(kind==='calibrate'&&this.config.serializeCalibrationWithReplay&&this.calibration.policy.cooperative!==true){this.admissionStatus='POOL_COOPERATIVE_OR_OFFLINE_CALIBRATION_REQUIRED';return false;}
     if(['catalog','calibrate'].includes(kind)){
-      const {rows:[backlog]}=await this.queue.pool.query("SELECT count(*)::int AS n FROM factory_pool_v4.jobs WHERE kind='replay' AND state IN ('ready','leased','blocked') AND scope=ANY($1::text[])",[[...this.contexts.keys()]]);
-      const maximum=this.config.maxPendingReplays||8,disk=await statfs(this.config.contentDir);
-      if(backlog.n>=maximum||Number(disk.bavail)*Number(disk.bsize)<this.config.diskReserveBytes){this.admissionStatus='POOL_REPLAY_OR_ARCHIVE_BACKPRESSURE';return false;}
+      const disk=await statfs(this.config.contentDir);
+      if(Number(disk.bavail)*Number(disk.bsize)<this.config.diskReserveBytes){this.admissionStatus='POOL_PRODUCTION_ARCHIVE_BACKPRESSURE';return false;}
     }
     const scopes=kind==='calibrate'?[this.config.poolTrust.poolId]:kind==='catalog'?(await this.queue.pool.query('SELECT id FROM factory_pool_v4.catalogs WHERE pool_id=$1',[this.config.poolTrust.poolId])).rows.map(r=>r.id):[...this.contexts.keys()];
     const job=await this.queue.claim(kind,this.owner+':'+randomUUID(),120,null,scopes);if(!job)return false;let lost=false;
     const renewal=setInterval(()=>this.queue.renew(job,120).catch(()=>lost=true),30000);
     try{const result=await handler(job);if(!lost)await this.queue.finish(job,result);}
-    catch(error){if(!lost)try{await this.queue.retry(job,{delaySeconds:error.code==='POOL_CONFIRMATION_PENDING'?2:30,blocked:['POOL_TRANSACTION_UNKNOWN','POOL_TRANSACTION_FAILED','POOL_FINITE_AUTHORIZATION','POOL_SIGNER_ALLOWANCE','POOL_CALIBRATION_INELIGIBLE','POOL_CALIBRATION_SCOPE','POOL_CALIBRATION_TEMPLATE_EXHAUSTED','POOL_REWARD_AUTHORIZATION_EXHAUSTED','POOL_COMPLETE_HISTORY_REQUIRED','POOL_SCIENCE_ALREADY_REGISTERED','POOL_CATALOG_DEADLINE','POOL_DUPLICATE_SCIENCE'].includes(error.code),code:typeof error.code==='string'&&/^[A-Z0-9_]{1,80}$/.test(error.code)?error.code:'POOL_RETRY_REQUIRED'});}catch{}}
+    catch(error){if(!lost)try{await this.queue.retry(job,{delaySeconds:['POOL_CONFIRMATION_PENDING','POOL_CALIBRATION_YIELDED'].includes(error.code)?2:30,blocked:['POOL_TRANSACTION_UNKNOWN','POOL_TRANSACTION_FAILED','POOL_FINITE_AUTHORIZATION','POOL_SIGNER_ALLOWANCE','POOL_CALIBRATION_INELIGIBLE','POOL_CALIBRATION_SCOPE','POOL_CALIBRATION_TEMPLATE_EXHAUSTED','POOL_REWARD_AUTHORIZATION_EXHAUSTED','POOL_COMPLETE_HISTORY_REQUIRED','POOL_SCIENCE_ALREADY_REGISTERED','POOL_CATALOG_DEADLINE','POOL_DUPLICATE_SCIENCE'].includes(error.code),code:typeof error.code==='string'&&/^[A-Z0-9_]{1,80}$/.test(error.code)?error.code:'POOL_RETRY_REQUIRED'});}catch{}}
     finally{clearInterval(renewal);}return true;
   }
   wake(){this.again=true;}
   async run({signal}={}){
     const lanes=Array.from({length:this.config.replayConcurrency},()=>this.loop('replay',j=>this.replay(j),signal));
     lanes.push(this.loop('payment',j=>this.payment(j),signal));
+    lanes.push(this.loop('keeper',j=>this.keeper.perform(j),signal));
+    lanes.push(this.maintenanceLoop(signal));
     if(this.supply)lanes.push(this.loop('catalog',j=>this.supply.register(j,{contentStore:new LocalFactoryContentStore(this.config.contentDir)}),signal));
     if(this.calibration)lanes.push(this.loop('calibrate',j=>this.nativeWork(()=>this.calibration.run(j)),signal));
     while(!this.stopped&&!signal?.aborted){try{await this.discover();this.lastDiscoveryError=null;}catch{this.lastDiscoveryError='POOL_DISCOVERY_RETRY';}await new Promise(ok=>setTimeout(ok,5000));}
     this.stopped=true;await Promise.all(lanes);
   }
-  async loop(kind,handler,signal){while(!this.stopped&&!signal?.aborted){try{if(!await this.work(kind,handler))await new Promise(ok=>setTimeout(ok,1000));}catch{this.lastWorkerError='POOL_DATABASE_RETRY';await new Promise(ok=>setTimeout(ok,5000));}}}
+  async loop(kind,handler,signal){while(!this.stopped&&!signal?.aborted){try{if(!await this.work(kind,handler))await new Promise(ok=>setTimeout(ok,1000));this.lastWorkerError=null;}catch{this.lastWorkerError='POOL_DATABASE_RETRY';await new Promise(ok=>setTimeout(ok,5000));}}}
+  async maintenanceLoop(signal){while(!this.stopped&&!signal?.aborted){try{this.lastReconciliation=await reconcilePoolBlockedV4(this);await this.root.gateway.cleanupPartials?.();await this.root.gateway.storageInventory?.();this.lastMaintenanceError=null;}catch{this.lastMaintenanceError='POOL_RECONCILIATION_RETRY';}await new Promise(resolve=>setTimeout(resolve,15000));}}
   async stop(){this.stopped=true;for(const res of this.eventClients)res.end();}
 }
 

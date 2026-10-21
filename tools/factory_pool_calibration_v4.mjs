@@ -25,16 +25,19 @@ export class FactoryPoolCalibrationV4 {
   }
   async schedule(shortage){
     if(!Number.isInteger(shortage)||shortage<=0)return;
-    const allocated=(await this.queue.pool.query("SELECT COALESCE(sum((deployment->>'budgetAtoms')::numeric),0)::text AS total FROM factory_pool_v4.catalogs WHERE pool_id=$1",[this.supply.trust.poolId])).rows[0].total;
+    const allocated=(await this.queue.pool.query("SELECT COALESCE(sum((deployment->>'budgetAtoms')::numeric-released_authorization_atoms),0)::text AS total FROM factory_pool_v4.catalogs WHERE pool_id=$1",[this.supply.trust.poolId])).rows[0].total;
     const remaining=BigInt(this.supply.authorization.rewardAtoms)-BigInt(allocated),groups=Math.min(shortage,this.policy.groups,Number(remaining>0n?remaining/BigInt(this.policy.rules.rewardAtoms):0n));
     this.supplyStatus={code:groups?'POOL_CALIBRATION_READY':'POOL_REWARD_AUTHORIZATION_EXHAUSTED',allocatedRewardAtoms:allocated,remainingRewardAtoms:String(remaining>0n?remaining:0n)};
     if(!groups)return;
-    const active=(await this.queue.pool.query("SELECT 1 FROM factory_pool_v4.jobs WHERE kind='calibrate' AND scope=$1 AND state<>'done' LIMIT 1",[this.supply.trust.poolId])).rows.length;if(active)return;
-    const inventory=await this.inventory(),digest=hash(canonical(inventory)),id='calibrate:'+this.supply.trust.poolId+':'+digest;
-    return this.queue.enqueue({id,kind:'calibrate',scope:this.supply.trust.poolId,payload:{inventory,inventoryHash:digest,groups,payer:this.supply.authority.publicKey.toBase58()}});
+    const active=(await this.queue.pool.query("SELECT 1 FROM factory_pool_v4.jobs WHERE kind='calibrate' AND scope=$1 AND state IN ('ready','leased') LIMIT 1",[this.supply.trust.poolId])).rows.length;if(active)return;
+    const inventory=await this.inventory(),digest=hash(canonical(inventory)),policyHash=hash(canonical(this.policy)),authorizationHash=hash(canonical(this.supply.authorization)),id='calibrate:'+this.supply.trust.poolId+':'+hash(canonical({inventory:digest,policyHash,authorizationHash,groups}));
+    const existing=await this.queue.enqueue({id,kind:'calibrate',scope:this.supply.trust.poolId,payload:{inventory,inventoryHash:digest,policyHash,authorizationHash,groups,payer:this.supply.authority.publicKey.toBase58()}});
+    if(existing.state==='blocked')this.supplyStatus={...this.supplyStatus,code:existing.result?.code||'POOL_CALIBRATION_RECONCILIATION'};
+    return existing;
   }
   async run(job){
     if(job.scope!==this.supply.trust.poolId||hash(canonical(job.payload.inventory))!==job.payload.inventoryHash||hash(await readFile(this.policy.tool))!==this.policy.toolSha256)throw fail('POOL_CALIBRATION_SCOPE');
+    if(job.payload.policyHash&&job.payload.policyHash!==hash(canonical(this.policy))||job.payload.authorizationHash&&job.payload.authorizationHash!==hash(canonical(this.supply.authorization)))throw fail('POOL_CALIBRATION_SCOPE');
     const directory=join(resolve(this.policy.outputDirectory),hash(Buffer.from(job.id)));await mkdir(directory,{recursive:true,mode:0o700});
     const inventoryPath=join(directory,'inventory.json');await frozen(inventoryPath,job.payload.inventory);
     const output=join(directory,'generation');let summary;
@@ -42,7 +45,8 @@ export class FactoryPoolCalibrationV4 {
       const args=[this.policy.tool,'--historical-inventory',inventoryPath,'--output',output,'--groups',String(job.payload.groups)];
       for(const [field,flag]of [['cacheDir','--cache'],['modelDir','--model'],['binary','--binary'],['goalFile','--goal']])if(this.policy[field])args.push(flag,this.policy[field]);
       if(this.policy.template)args.push('--template',this.policy.template);
-      let run;try{run=await execute(this.policy.python,args,{timeout:86400000,maxBuffer:2*1024*1024});}catch(error){await frozen(join(directory,'failure-'+job.fence+'.json'),{stderrHash:hash(Buffer.from(error.stderr||'')),toolHash:this.policy.toolSha256});throw fail(String(error.stderr).includes('The anatomical selection envelope is exhausted')?'POOL_CALIBRATION_TEMPLATE_EXHAUSTED':'POOL_CALIBRATION_TOOL_FAILED');}
+      if(this.policy.cooperative===true)args.push('--yield-after-kernels','1','--kernel-timeout-seconds',String(this.policy.kernelTimeoutSeconds||120));
+      let run;try{run=await execute(this.policy.python,args,{timeout:this.policy.sliceTimeoutMs||300000,maxBuffer:2*1024*1024});}catch(error){if(error.code===75)throw fail('POOL_CALIBRATION_YIELDED');await frozen(join(directory,'failure-'+job.fence+'.json'),{stderrHash:hash(Buffer.from(error.stderr||'')),toolHash:this.policy.toolSha256});throw fail(String(error.stderr).includes('The anatomical selection envelope is exhausted')?'POOL_CALIBRATION_TEMPLATE_EXHAUSTED':'POOL_CALIBRATION_TOOL_FAILED');}
       await frozen(join(directory,'execution.json'),{stdoutHash:hash(Buffer.from(run.stdout)),stderrHash:hash(Buffer.from(run.stderr))});summary=JSON.parse(await readFile(join(output,'summary.json'),'utf8'));
     }
     if(summary.schema!=='flybrainlabs-factory-catalog-proposal-v4'||summary.historicalGoalsExcluded!==job.payload.inventory.count||summary.eligibleCount<1||summary.approval!==false||summary.publicBudgetAtoms!=='0')throw fail('POOL_CALIBRATION_INELIGIBLE');
