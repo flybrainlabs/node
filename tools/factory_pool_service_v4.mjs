@@ -24,6 +24,7 @@ import {makeRound} from '../web/task-factory-v4-science.mjs';
 import {instruction,meta,TOKEN_PROGRAM_ID} from './task_factory_v4_client.mjs';
 import {factoryRpcTransportV4} from './factory_rpc_transport_v4.mjs';
 import {getModelReadiness} from './candidate_verifier_v2.mjs';
+import {FactoryValidatorFleetV4} from './factory_validator_fleet_v4.mjs';
 const fail=code=>Object.assign(new Error(code),{code});
 const signerFile=async file=>{const bytes=await readFile(file);return bytes.length===32?Keypair.fromSeed(bytes):Keypair.fromSecretKey(Uint8Array.from(JSON.parse(bytes.toString())));};
 export class FactoryPoolServiceV4 {
@@ -150,13 +151,13 @@ export class FactoryPoolServiceV4 {
     this.replayMetrics=(await this.queue.pool.query('SELECT count(*)::int AS samples,percentile_cont(0.5) WITHIN GROUP(ORDER BY r.wall_ms)::float8 AS p50_ms,percentile_cont(0.95) WITHIN GROUP(ORDER BY r.wall_ms)::float8 AS p95_ms FROM factory_pool_v4.replays r JOIN factory_pool_v4.jobs j ON j.id=r.job_id WHERE j.scope=ANY($1::text[])',[scopes])).rows[0];
     this.inventoryMetrics={actualOpen:openCatalogs,actualActive:activeCatalogs,plannedActive,openableCatalogs,plannedOpen,scheduledAndOpenTasks:remaining,preparedTasks:prepared.n};
     this.lastDiscoveryAt=Date.now();this.lastDiscoveryError=null;
-    this.root.gateway.verifierStatus={status:counts.blocked?'reconciliation-required':counts.pending?'replay-queue-active':openCatalogs?'open-work-available':'no-open-work',at:new Date().toISOString(),serialReplay:this.config.replayConcurrency===1,maxReplayProcesses:this.config.replayConcurrency,nativeModelChecked:!!this.nativeReady,trustedKeys:2,independentOperators:1,pending:counts.pending,blocked:counts.blocked,quarantined:counts.quarantined,catalogs:this.contexts.size,remainingTasks:remaining,openCatalogs,plannedOpen,demand,reserve:this.reserveStatus||null,capacity:await replayCapacityV4(this),supply:this.calibration?.supplyStatus||(counts.rewardCapacityPaused?{code:'POOL_REWARD_AUTHORIZATION_EXHAUSTED'}:null)};
+    this.root.gateway.verifierStatus={status:counts.blocked?'reconciliation-required':counts.pending?'replay-queue-active':openCatalogs?'open-work-available':'no-open-work',at:new Date().toISOString(),serialReplay:!this.validationFleet&&this.config.replayConcurrency===1,maxReplayProcesses:this.validationFleet?.config.members.length||this.config.replayConcurrency,nativeModelChecked:!!this.nativeReady,verificationMethod:'complete-model-user-validation',taskPolicy:'frozen-per-task',pending:counts.pending,blocked:counts.blocked,quarantined:counts.quarantined,catalogs:this.contexts.size,remainingTasks:remaining,openCatalogs,plannedOpen,demand,reserve:this.reserveStatus||null,capacity:await replayCapacityV4(this),supply:this.calibration?.supplyStatus||(counts.rewardCapacityPaused?{code:'POOL_REWARD_AUTHORIZATION_EXHAUSTED'}:null)};
     for(const [factory,c]of this.contexts)if(c.retired&&c!==this.root){c.gateway.close();this.contexts.delete(factory);}
     await this.notify();
   }
   health(){
     const age=this.lastDiscoveryAt?Date.now()-this.lastDiscoveryAt:null,ready=!this.lastDiscoveryError&&age!==null&&age<15000;
-    return {schema:'flybrainlabs-factory-health-v4',transportReady:true,capabilities:['continuous-v4-20261021','signed-catalog-history-v4','resumable-upload-v4'],businessReady:ready&&!this.lastWorkerError,lastWorkerError:this.lastWorkerError||null,lastMaintenanceError:this.lastMaintenanceError||null,queues:this.queueMetrics||[],replayLatency:this.replayMetrics||null,inventory:this.inventoryMetrics||null,lastDiscoveryAt:this.lastDiscoveryAt||null,discoveryAgeMs:age,lastDiscoveryError:this.lastDiscoveryError||null,lastDiscoveryFailureAt:this.lastDiscoveryFailureAt||null,taskAuthority:'contract',catalogCreation:!!this.supply,storage:this.root.gateway.storageStats?.()||null,verifier:this.root.gateway.verifierStatus||{status:'not-started'}};
+    return {schema:'flybrainlabs-factory-health-v4',transportReady:true,capabilities:['continuous-v4-20261021','signed-catalog-history-v4','resumable-upload-v4'],businessReady:ready&&!this.lastWorkerError&&(!this.validationFleet||(this.validationFleet.lastProbe?.ready>=this.validationFleet.config.minimumAttestations&&Date.now()-this.validationFleet.lastProbe.at<60000)),validation:this.validationFleet?.summary()||null,lastWorkerError:this.lastWorkerError||null,lastMaintenanceError:this.lastMaintenanceError||null,queues:this.queueMetrics||[],replayLatency:this.replayMetrics||null,inventory:this.inventoryMetrics||null,lastDiscoveryAt:this.lastDiscoveryAt||null,discoveryAgeMs:age,lastDiscoveryError:this.lastDiscoveryError||null,lastDiscoveryFailureAt:this.lastDiscoveryFailureAt||null,taskAuthority:'contract',catalogCreation:!!this.supply,storage:this.root.gateway.storageStats?.()||null,verifier:this.root.gateway.verifierStatus||{status:'not-started'}};
   }
   async replay(job){return this.nativeWork(()=>this.replayInternal(job));}
   async replayInternal(job){
@@ -169,7 +170,7 @@ export class FactoryPoolServiceV4 {
     if(!await eligibleTime())return {deadlinePassed:true};
     let {rows:[saved]}=await this.queue.pool.query('SELECT * FROM factory_pool_v4.replays WHERE job_id=$1',[job.id]);
     if(!saved){
-      const started=performance.now(),verified=await this.verify({reader,address,contentStore:new LocalFactoryContentStore(this.config.contentDir),modelDir:this.config.modelDir,outputDir:join(this.config.outputDir,c.deployment.factory,signer.publicKey.toBase58(),'lease-'+job.fence),binary:this.config.binary});
+      const started=performance.now(),verified=await this.verify({reader,address,deployment:c.deployment,contentStore:new LocalFactoryContentStore(this.config.contentDir),modelDir:this.config.modelDir,outputDir:join(this.config.outputDir,c.deployment.factory,signer.publicKey.toBase58(),'lease-'+job.fence),binary:this.config.binary});
       const report=verified.report,reportHash=await hash(canonical(report));
       await this.queue.transaction(async db=>{await this.queue.guard(job,db,{lock:true});await db.query('INSERT INTO factory_pool_v4.replays(job_id,report_hash,report,wall_ms) VALUES($1,$2,$3,$4) ON CONFLICT(job_id) DO NOTHING',[job.id,reportHash,report,Math.ceil(performance.now()-started)]);});
       saved=(await this.queue.pool.query('SELECT * FROM factory_pool_v4.replays WHERE job_id=$1',[job.id])).rows[0];
@@ -231,7 +232,9 @@ async function main(){
   const queue=await(await FactoryPoolQueueV4.connect((await readFile(config.databaseUrlFile,'utf8')).trim())).initialize(),shared=factoryRpcTransportV4(config.rpcUpstream),connection=new Connection(config.rpcUpstream,{commitment:'finalized',disableRetryOnRateLimit:true,fetch:(url,options)=>shared(url,{...options,factoryFresh:true})}),signers=await Promise.all(config.verifierKeyFiles.map(signerFile));
   let supply=null;if(config.supplyAuthorization){const authority=await signerFile(config.authorityKeyFile),transport=new FactoryPoolTransportV4({queue,connection,payer:authority,maxTransactions:config.maxCatalogTransactions,maxFeeLamports:config.maxCatalogFeeLamports});supply=new FactoryPoolSupplyV4({queue,baseDeployment:config.deployment,trust:config.poolTrust,authority,transport,authorization:config.supplyAuthorization});}
   const calibration=supply&&config.calibrationPolicy?new FactoryPoolCalibrationV4({queue,supply,policy:config.calibrationPolicy}):null;
-  const service=await new FactoryPoolServiceV4({config,queue,connection,signers,supply,calibration}).initialize();
+  const fleet=config.validationFleetFile?await(await FactoryValidatorFleetV4.load(config.validationFleetFile)).initialize():null;
+  const service=await new FactoryPoolServiceV4({config,queue,connection,signers,supply,calibration,...(fleet?{verify:input=>fleet.verify(input)}:{})}).initialize();
+  if(fleet){service.nativeReady=true;service.validationFleet=fleet;const probe=setInterval(()=>fleet.probe().catch(()=>{}),30000);probe.unref();}
   if(supply){supply.transport.beforeSend=()=>{if(service.stopped)throw fail('POOL_STOPPED');};for(const planPath of config.approvedPlans||[]){const plan=JSON.parse(await readFile(planPath,'utf8'));await supply.importPlan(plan,async path=>JSON.parse(await readFile(new URL(path,pathToFileURL(planPath)),'utf8')));}}
   await service.discover();
   const server=serveFactoryGatewayV4(service.root.gateway,{port:config.port||8792,pool:service});const abort=new AbortController();for(const s of ['SIGTERM','SIGINT'])process.once(s,()=>{abort.abort();server.close();service.stop();});

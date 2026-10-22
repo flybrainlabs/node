@@ -103,7 +103,10 @@
     "tools/x_public_verification.mjs": "tools/x_public_verification.mjs",
     "web/data/market-catalog-v1.json": "web/data/market-catalog-v1.json",
     "tools/factory_pool_inspect_v4.mjs": "tools/factory_pool_inspect_v4.mjs",
-    "tests/factory_pool_recovery_v4.mjs": "tests/factory_pool_recovery_v4.mjs"
+    "tests/factory_pool_recovery_v4.mjs": "tests/factory_pool_recovery_v4.mjs",
+    "tools/factory_validator_fleet_v4.mjs": "tools/factory_validator_fleet_v4.mjs",
+    "tools/factory_validator_worker_v4.mjs": "tools/factory_validator_worker_v4.mjs",
+    "tests/factory_validator_fleet_v4.mjs": "tests/factory_validator_fleet_v4.mjs"
   },
   "project": "flybrainlabs"
 }
