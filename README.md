@@ -121,6 +121,8 @@ Run from the assembled workspace with the existing pinned dependencies:
 ```sh
 node tests/factory_gateway_v4.mjs
 node tests/factory_pool_capacity_v4.mjs
+node tests/factory_validator_fleet_v4.mjs
+node tests/factory_validator_quorum_v4.mjs
 FLYBRAIN_POOL_TEST_SOCKET=/path/to/isolated/socket node tests/factory_pool_recovery_v4.mjs
 FLYBRAIN_POOL_TEST_SOCKET=/path/to/isolated/socket node tests/factory_pool_sbf_v4.mjs
 ```
@@ -128,3 +130,10 @@ FLYBRAIN_POOL_TEST_SOCKET=/path/to/isolated/socket node tests/factory_pool_sbf_v
 See `docs/CONTINUOUS_MINING_V4_20261021.md` and the infrastructure
 `docs/CONTINUOUS_MINING_V4_20261021_ACCEPTANCE.json` for evidence boundaries.
 Source publication does not establish live acceptance or activate the service.
+
+The quorum suite uses actual loopback HTTP with fixture signed scientific reports.
+It exercises a held fourth request, bounded collection time, conflicting groups,
+tampering, a busy member during the next candidate, stable returned evidence and
+the finalized-chain time budget. It creates no public chain transaction. Full
+model replay, real miner rewards and long-duration operation need separate live
+evidence. See the infrastructure validation participant operations guide.

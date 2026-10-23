@@ -106,7 +106,8 @@
     "tests/factory_pool_recovery_v4.mjs": "tests/factory_pool_recovery_v4.mjs",
     "tools/factory_validator_fleet_v4.mjs": "tools/factory_validator_fleet_v4.mjs",
     "tools/factory_validator_worker_v4.mjs": "tools/factory_validator_worker_v4.mjs",
-    "tests/factory_validator_fleet_v4.mjs": "tests/factory_validator_fleet_v4.mjs"
+    "tests/factory_validator_fleet_v4.mjs": "tests/factory_validator_fleet_v4.mjs",
+    "tests/factory_validator_quorum_v4.mjs": "tests/factory_validator_quorum_v4.mjs"
   },
   "project": "flybrainlabs"
 }

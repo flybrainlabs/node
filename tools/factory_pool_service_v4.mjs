@@ -166,11 +166,12 @@ export class FactoryPoolServiceV4 {
     const state=async()=>{const s=await reader.account(address,decodeSubmission),t=await reader.account(new PublicKey(s.task),decodeTask),f=await reader.factory(),index=f.verifiers.findIndex(v=>new PublicKey(v).equals(signer.publicKey));if(index<0||!reader.a.task(reader.expected.factoryAddress,t.index).equals(new PublicKey(s.task))||!new PublicKey(t.factory).equals(reader.expected.factoryAddress))throw fail('POOL_REPLAY_SCOPE');return {s,t,f,index};};
     let {s,t,f,index}=await state();if((s.validVotes|s.invalidVotes)&1<<index)return {alreadyVoted:true,...await this.transport(signer).reconcile(job,'vote')};
     if(s.state!==STATE.REVEALED||t.state!==STATE.ACTIVE||t.attempt!==s.attempt||f.activeIndex!==t.index)return {noLongerEligible:true};
-    const eligibleTime=async()=>{const slot=await this.connection.getSlot('finalized'),now=await this.connection.getBlockTime(slot);return Number.isSafeInteger(now)&&now<=Number(t.verifyDeadline);};
+    let replayDeadlineAt;
+    const eligibleTime=async()=>{const slot=await this.connection.getSlot('finalized'),now=await this.connection.getBlockTime(slot);if(Number.isSafeInteger(now))replayDeadlineAt=Date.now()+(Number(t.verifyDeadline)-now-(this.config.confirmationMarginSeconds||60))*1000;return Number.isSafeInteger(now)&&now<=Number(t.verifyDeadline);};
     if(!await eligibleTime())return {deadlinePassed:true};
     let {rows:[saved]}=await this.queue.pool.query('SELECT * FROM factory_pool_v4.replays WHERE job_id=$1',[job.id]);
     if(!saved){
-      const started=performance.now(),verified=await this.verify({reader,address,deployment:c.deployment,contentStore:new LocalFactoryContentStore(this.config.contentDir),modelDir:this.config.modelDir,outputDir:join(this.config.outputDir,c.deployment.factory,signer.publicKey.toBase58(),'lease-'+job.fence),binary:this.config.binary});
+      const started=performance.now(),verified=await this.verify({reader,address,deployment:c.deployment,deadlineAt:replayDeadlineAt,contentStore:new LocalFactoryContentStore(this.config.contentDir),modelDir:this.config.modelDir,outputDir:join(this.config.outputDir,c.deployment.factory,signer.publicKey.toBase58(),'lease-'+job.fence),binary:this.config.binary});
       const report=verified.report,reportHash=await hash(canonical(report));
       await this.queue.transaction(async db=>{await this.queue.guard(job,db,{lock:true});await db.query('INSERT INTO factory_pool_v4.replays(job_id,report_hash,report,wall_ms) VALUES($1,$2,$3,$4) ON CONFLICT(job_id) DO NOTHING',[job.id,reportHash,report,Math.ceil(performance.now()-started)]);});
       saved=(await this.queue.pool.query('SELECT * FROM factory_pool_v4.replays WHERE job_id=$1',[job.id])).rows[0];
