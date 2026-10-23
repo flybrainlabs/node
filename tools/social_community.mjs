@@ -6,6 +6,7 @@ import {readFile} from 'node:fs/promises';
 import {PublicKey} from '@solana/web3.js';
 import {XPublicVerificationProvider} from './x_public_verification.mjs';
 import {SocialGitHubService} from './social_github.mjs';
+import {ProjectRecruitmentService} from './project_recruitment.mjs';
 
 const fail=(code,status=400)=>Object.assign(new Error(code),{code,status});
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -23,10 +24,11 @@ const dayEnd=seconds=>(Math.floor(seconds/86400)+1)*86400;
 export const maskWallet=wallet=>{const start=Math.floor((wallet.length-8)/2);return wallet.slice(0,start)+'********'+wallet.slice(start+8);};
 
 export class SocialCommunityService {
-  constructor(auth,allocation,{provider=new XPublicVerificationProvider(),adminWallets=[auth.config.project],githubConfig={},githubProvider=null}={}){
+  constructor(auth,allocation,{provider=new XPublicVerificationProvider(),adminWallets=[auth.config.project],githubConfig={},githubProvider=null,projectCatalog=null}={}){
     this.auth=auth;this.db=auth.db;this.clock=()=>auth.clock();this.provider=provider;this.allocation=allocation;
     this.adminWallets=new Set(adminWallets.filter(Boolean).map(walletAddress));this.activeVerifications=0;
     this.github=new SocialGitHubService(this,githubConfig,githubProvider);
+    this.projects=new ProjectRecruitmentService(this,{catalog:projectCatalog});
     if(allocation.schema!=='flybrainlabs-community-allocation-v1'||allocation.decimals!==8||allocation.airdropBudgetAtoms!=='2500000000000000'||allocation.communityPoolAtoms!=='3118332300000000'||atoms(allocation.airdropBudgetAtoms)+atoms(allocation.otherEcosystemAtoms)!==atoms(allocation.communityPoolAtoms)||allocation.tokenExecutionEnabled!==false)throw fail('community_policy_conflict',503);
   }
   transaction(operation){this.db.exec('BEGIN IMMEDIATE');try{const result=operation();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
@@ -46,7 +48,7 @@ export class SocialCommunityService {
         this.db.prepare('INSERT INTO social_tasks VALUES(?,?,?,?,?,?,1,0,1,?,?) ON CONFLICT(task_key) DO NOTHING').run(key,title,description,1,'daily',verifier,this.clock(),this.clock());
         this.db.prepare("INSERT INTO social_task_repeat_rules VALUES(?,'utc_day',?) ON CONFLICT(task_key) DO NOTHING").run(key,limit);
       }
-    });await this.github.initialize();return this;
+    });await this.github.initialize();await this.projects.initialize();return this;
   }
   admin(session,{recent=false}={}){if(!this.adminWallets.has(session.wallet))throw fail('admin_required',403);if(recent)this.recent(session);return session.wallet;}
   recent(session){if(session.expires_at-28800<this.clock()-300)throw fail('fresh_sign_in_required',401);}

@@ -362,6 +362,10 @@ async fn full_public_package_download_access_and_damage_boundaries(){
  let admin=SigningKey::from_bytes(&[4;32]);let op=request(&admin,"product-operation",json!({"operation":"publish-result","packageId":pid}),"publish-retained-full-package");
  let result=a.publish_product_package(&op,now()).unwrap();let rid=result["resultId"].as_str().unwrap();let detail=a.product_result(rid).unwrap();assert_eq!(detail["trust"]["externalObservation"],false);assert_eq!(detail["trials"][0]["pairedTargetCounts"],json!([[0,55],[0,125]]));
  let file=detail["files"].as_array().unwrap().iter().find(|f|f["name"]=="README.txt").unwrap();let url=file["url"].as_str().unwrap();let app=router(a.clone());
+ for endpoint in ["/api/results".to_string(),format!("/api/results/{rid}")] {
+  let response=app.clone().oneshot(Request::builder().uri(endpoint).body(Body::empty()).unwrap()).await.unwrap();assert_eq!(response.status(),200);
+  let content=to_bytes(response.into_body(),1_048_576).await.unwrap();assert!(std::str::from_utf8(&content).unwrap().contains(rid));
+ }
  let response=app.clone().oneshot(Request::builder().uri(url).header("range","bytes=0-31").body(Body::empty()).unwrap()).await.unwrap();assert_eq!(response.status(),206);assert_eq!(to_bytes(response.into_body(),64).await.unwrap().len(),32);
  let invalid=app.clone().oneshot(Request::builder().uri(format!("{url}a")).body(Body::empty()).unwrap()).await.unwrap();assert_eq!(invalid.status(),403);
  let expired=app.clone().oneshot(Request::builder().uri(format!("/api/results/{rid}/files/README.txt?expires=1&signature=invalid")).body(Body::empty()).unwrap()).await.unwrap();assert_eq!(expired.status(),410);

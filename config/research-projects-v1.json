@@ -1,0 +1,2244 @@
+{
+  "schemaVersion": "fbw-research-projects-v1",
+  "catalogVersion": "2026-10-23.1",
+  "consentVersion": "project-coordination-v1",
+  "updatedAt": "2026-10-23",
+  "projects": [
+    {
+      "id": "FBW-P01",
+      "slug": "obstacle-navigation",
+      "displayOrder": 1,
+      "title": {
+        "en": "Obstacle-Aware Navigation",
+        "zh": "自主避障导航"
+      },
+      "shortDescription": {
+        "en": "Develop connectome-driven navigation that turns local sensory signals into steering and speed control in obstacle-filled virtual environments.",
+        "zh": "探索连接组驱动的导航控制，让虚拟移动体依据局部环境信号调整方向，在存在障碍的场景中抵达目标。"
+      },
+      "thumbnail": {
+        "path": "projects/obstacle-navigation.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Obstacle-Aware Navigation",
+          "zh": "任务概念示意：自主避障导航"
+        }
+      },
+      "overview": {
+        "en": "Build a reproducible task for turning sensory signals into continuous action. A controlled two-dimensional environment will vary obstacle density, passages and sensory noise. The study asks whether neural responses support stable, interpretable steering in held-out scenes.",
+        "zh": "围绕“感觉输入怎样转化为连续行动”建立可复现任务。使用可控的二维环境，逐步增加障碍密度、通道变化和感觉噪声。研究重点是神经响应能否形成稳定、可解释的动作输出，并在没有参与参数搜索的新场景中保持效果。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Increase goal arrival while reducing collisions and unproductive stops.",
+          "Reduce excess travel distance and repeated left-right oscillation.",
+          "Compare stability across starting points, maps and sensory noise."
+        ],
+        "zh": [
+          "同时提高目标到达率、减少碰撞和无效停顿。",
+          "降低绕行距离和左右转向振荡。",
+          "在不同起点、地图与噪声条件下评估稳定性。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "The environment exposes left, front and right obstacle cues and relative goal direction. An encoder maps those signals to declared neural populations; a continuous runner reads activity from specified output populations and converts it to steering and speed. Initial searches cover input gain, temporal windows and constrained readout parameters. Arrival and collision measures are evaluated together so remaining motionless cannot count as success.",
+        "zh": "环境提供左右/前方障碍信号及目标相对方向；输入编码器将其送入已定义神经元群；持续仿真后从指定输出群读取活动，转换成转向与速度。前期搜索输入增益、时间窗和受约束读出参数。目标到达和碰撞共同评价，避免停住不动取得好成绩。"
+      },
+      "currentFoundation": {
+        "en": "The connectome model and response computation provide reusable foundations. A behavior-specific interface, continuous closed-loop executor, map benchmark and control results still require implementation and acceptance.",
+        "zh": "可复用连接组模型和响应计算。行为专用接口、持续闭环执行器、地图基准和控制效果需要项目实际建设与验收。下一里程碑为“冻结二维任务基准与感觉—动作接口”；若无已完成证据，保持计划状态。"
+      },
+      "nextMilestone": {
+        "en": "Freeze the 2D benchmark and sensory–action interface",
+        "zh": "冻结二维任务基准与感觉—动作接口"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Freeze the 2D benchmark and sensory–action interface",
+            "zh": "冻结二维任务基准与感觉—动作接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "A versioned navigation configuration package.",
+          "Reproduction materials for fixed evaluation maps.",
+          "A performance and failure-case report."
+        ],
+        "zh": [
+          "导航配置包、固定测试地图上的复现材料、失败场景与性能报告。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Goal arrival",
+            "zh": "目标到达率"
+          },
+          "definition": {
+            "en": "Fraction of fixed evaluation episodes that reach the goal.",
+            "zh": "固定评测回合中抵达目标的比例。"
+          },
+          "direction": "higher",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Collision rate",
+            "zh": "碰撞率"
+          },
+          "definition": {
+            "en": "Fraction of evaluation episodes with a defined obstacle contact.",
+            "zh": "出现协议定义障碍接触的评测回合比例。"
+          },
+          "direction": "lower",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "Completion time",
+            "zh": "完成用时"
+          },
+          "definition": {
+            "en": "Model time to reach the declared goal region; failures and stall time are reported separately.",
+            "zh": "抵达规定目标区域所用的模型时间；失败与停滞用时分别报告。"
+          },
+          "direction": "lower",
+          "unit": "model time",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Stall fraction",
+            "zh": "停滞比例"
+          },
+          "definition": {
+            "en": "Fraction of the evaluation window spent below the protocol motion threshold.",
+            "zh": "评测窗口内低于协议运动阈值的时间比例。"
+          },
+          "direction": "lower",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-5",
+          "label": {
+            "en": "Path length",
+            "zh": "路径长度"
+          },
+          "definition": {
+            "en": "Distance traveled before reaching the goal, compared under matched maps and starting positions.",
+            "zh": "抵达目标前的行进距离，在相同地图和起点条件下比较。"
+          },
+          "direction": "lower",
+          "unit": "environment distance",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Parameter search",
+          "Batch scene evaluation",
+          "Independent reproduction",
+          "Front-end environment development"
+        ],
+        "zh": [
+          "参数搜索、批量场景评测、独立复现、前端场景开发。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Local obstacle and goal cues",
+              "zh": "局部障碍与目标线索"
+            },
+            {
+              "en": "Declared neural populations",
+              "zh": "已定义神经元群"
+            },
+            {
+              "en": "Steering and speed readout",
+              "zh": "转向与速度读出"
+            },
+            {
+              "en": "2D environment state",
+              "zh": "二维环境状态"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          },
+          "feedback": {
+            "en": "Action changes the next sensory observation",
+            "zh": "动作改变下一时刻感觉观测"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Sparse obstacles",
+              "zh": "稀疏障碍"
+            },
+            {
+              "en": "Narrow passages",
+              "zh": "狭窄通道"
+            },
+            {
+              "en": "Sensory noise",
+              "zh": "感觉噪声"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "Sensory–motor body framework",
+          "url": "https://neuromechfly.org/",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "external"
+        }
+      ]
+    },
+    {
+      "id": "FBW-P02",
+      "slug": "odor-source-search",
+      "displayOrder": 2,
+      "title": {
+        "en": "Odor-Guided Source Search",
+        "zh": "气味寻源与目标搜索"
+      },
+      "shortDescription": {
+        "en": "Explore how local odor and directional cues can guide a virtual fly toward a source under changing and noisy conditions.",
+        "zh": "研究虚拟果蝇如何利用局部气味与方向线索搜索目标，在干扰和信号变化下逐步接近来源。"
+      },
+      "thumbnail": {
+        "path": "projects/odor-source-search.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Odor-Guided Source Search",
+          "zh": "任务概念示意：气味寻源与目标搜索"
+        }
+      },
+      "overview": {
+        "en": "Begin with a static concentration field, then study competing attractant and repellent sources and intermittent odor. The controller receives local cues rather than the source coordinates. The objective is to characterize the conditions in which a neural controller can search reliably.",
+        "zh": "从静态浓度场开始，逐步扩展到吸引/排斥源竞争和断续气味。任务关注根据局部线索进行搜索，而非向控制器提供目标的准确坐标。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Improve source-finding across starting positions.",
+          "Reduce search duration and selection of the wrong source.",
+          "Measure adaptation to concentration changes, wind cues and sensory noise."
+        ],
+        "zh": [
+          "提高不同起点下的寻源成功率，缩短搜索时间，降低错误目标选择，评估对浓度变化和感觉噪声的适应范围。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "Simulate concentration at left and right sensory positions, with wind and time variation added in later protocol versions. Encode local signals into declared pathways and read neural responses into forward motion, turning and search actions. Community evaluation can cover concentrations, starts and interference conditions. Ground-truth target coordinates remain restricted to the evaluator.",
+        "zh": "模拟左右感觉位置的局部浓度，后续加入风向与时间变化。将输入编码到对应通路，读取神经响应控制前进、转向和搜索动作。社区可并行覆盖不同浓度、风向、起点与干扰条件。目标坐标仅用于环境评测。"
+      },
+      "currentFoundation": {
+        "en": "Connectome and stimulation-response computation are reusable. Olfactory mapping, concentration fields, action readouts and a source-search benchmark need project-specific evidence.",
+        "zh": "可复用连接组与刺激响应计算；嗅觉映射、浓度场、动作读出与寻源基准尚需专项证据。下一里程碑为“确定感觉编码与静态寻源基准”。"
+      },
+      "nextMilestone": {
+        "en": "Define sensory encoding and a static source-search benchmark",
+        "zh": "确定感觉编码与静态寻源基准"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Define sensory encoding and a static source-search benchmark",
+            "zh": "确定感觉编码与静态寻源基准"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "Versioned source-search configurations.",
+          "Trajectories with complete test-condition manifests.",
+          "An interference and robustness evaluation report."
+        ],
+        "zh": [
+          "寻源配置包、轨迹与测试条件清单、不同干扰条件下的表现报告。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Source arrival",
+            "zh": "寻源成功率"
+          },
+          "definition": {
+            "en": "Fraction of episodes reaching the protocol source region.",
+            "zh": "进入协议来源区域的回合比例。"
+          },
+          "direction": "higher",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Search duration",
+            "zh": "搜索用时"
+          },
+          "definition": {
+            "en": "Model time to reach the source, with failures reported separately.",
+            "zh": "抵达来源所需模型时间，失败回合单独报告。"
+          },
+          "direction": "lower",
+          "unit": "model time",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "Wrong-source selection",
+            "zh": "错误目标率"
+          },
+          "definition": {
+            "en": "Fraction of episodes choosing a competing source.",
+            "zh": "选择竞争来源的回合比例。"
+          },
+          "direction": "lower",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Signal recovery",
+            "zh": "信号恢复"
+          },
+          "definition": {
+            "en": "Recovery time and failure conditions after an odor interruption.",
+            "zh": "气味中断后恢复搜索的时间及失败条件。"
+          },
+          "direction": "lower",
+          "unit": "model time",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Environment parameter sweeps",
+          "Robustness evaluation",
+          "Input mapping research",
+          "Independent reproduction"
+        ],
+        "zh": [
+          "环境参数扫描、稳健性评测、输入映射研究与结果复现。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Local concentration and wind",
+              "zh": "局部浓度与风向"
+            },
+            {
+              "en": "Sensory pathway encoding",
+              "zh": "感觉通路编码"
+            },
+            {
+              "en": "Search and turning actions",
+              "zh": "搜索与转向动作"
+            },
+            {
+              "en": "Local odor environment",
+              "zh": "局部气味环境"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          },
+          "feedback": {
+            "en": "Action changes the next sensory observation",
+            "zh": "动作改变下一时刻感觉观测"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Static source",
+              "zh": "静态来源"
+            },
+            {
+              "en": "Competing sources",
+              "zh": "竞争来源"
+            },
+            {
+              "en": "Intermittent odor",
+              "zh": "断续气味"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "Odor and wind-guided navigation",
+          "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9360402/",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "external"
+        }
+      ]
+    },
+    {
+      "id": "FBW-P03",
+      "slug": "two-choice-decision",
+      "displayOrder": 3,
+      "title": {
+        "en": "Two-Choice Decision-Making",
+        "zh": "双目标选择与冲突决策"
+      },
+      "shortDescription": {
+        "en": "Study how competing inputs produce a choice, and how stimulus strength, timing, and noise shape the outcome.",
+        "zh": "探索神经网络如何在竞争刺激之间形成选择，并分析强度、时序和噪声怎样影响决策。"
+      },
+      "thumbnail": {
+        "path": "projects/two-choice-decision.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Two-Choice Decision-Making",
+          "zh": "任务概念示意：双目标选择与冲突决策"
+        }
+      },
+      "overview": {
+        "en": "Create a small, interpretable task with two competing inputs and a declared action output. Progress from strength comparisons to attraction–repulsion conflict. Predeclared scoring and circuit interventions distinguish task-specific choice from broad claims about intelligence.",
+        "zh": "使用双输入和少量动作输出建立可解释任务。从简单强弱选择推进到吸引与排斥冲突，并结合回路干预观察选择变化。评价规则必须事前定义。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Increase consistency with the task rule.",
+          "Reduce unnecessary switching between alternatives.",
+          "Measure reaction delay, noise sensitivity and intervention effects."
+        ],
+        "zh": [
+          "提高规则对应的选择一致性，减少不必要的摇摆；分析反应时间与噪声敏感度；检验输入顺序与回路干预的影响。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "Freeze the two-input conditions, state duration and output readout. Search stimulus combinations, temporal windows and small readout parameter sets. Compare equal conditions across seeds and interventions. A stimulation selectivity score is not itself a behavioral decision score.",
+        "zh": "定义双输入条件、持续状态范围和固定输出读出。搜索刺激组合、时间窗和小规模读出参数。明确区分预定义任务中的选择和通用智能判断。当前刺激选择性分数不能直接当行为决策成绩。"
+      },
+      "currentFoundation": {
+        "en": "A/B response comparisons provide a reusable measurement foundation. Behavioral scores require a frozen two-input rule and an action readout, followed by actual evaluation.",
+        "zh": "可复用 A/B 响应比较。下一里程碑为“冻结双输入任务规则和动作读出接口”，随后才能报告行为成绩。"
+      },
+      "nextMilestone": {
+        "en": "Freeze two-input task rules and the action readout",
+        "zh": "冻结双输入任务规则和动作读出接口"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Freeze two-input task rules and the action readout",
+            "zh": "冻结双输入任务规则和动作读出接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "Versioned choice configuration packages.",
+          "Choice distributions with input-condition manifests.",
+          "Circuit-intervention control and reproduction materials."
+        ],
+        "zh": [
+          "选择配置包、不同输入条件的选择分布、回路干预对照材料。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Rule consistency",
+            "zh": "任务一致性"
+          },
+          "definition": {
+            "en": "Fraction of choices matching the predeclared task rule.",
+            "zh": "符合预定义任务规则的选择比例。"
+          },
+          "direction": "higher",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Decision delay",
+            "zh": "决策延迟"
+          },
+          "definition": {
+            "en": "Model time between stimulus onset and a valid output choice.",
+            "zh": "刺激出现至有效选择输出之间的模型时间。"
+          },
+          "direction": "lower",
+          "unit": "model time",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "Repeated-condition stability",
+            "zh": "重复条件稳定性"
+          },
+          "definition": {
+            "en": "Choice consistency under repeated, matched conditions.",
+            "zh": "重复匹配条件下的选择一致性。"
+          },
+          "direction": "higher",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Intervention difference",
+            "zh": "干预前后变化"
+          },
+          "definition": {
+            "en": "Report choice-distribution changes under matched interventions.",
+            "zh": "报告匹配干预条件下选择分布的变化。"
+          },
+          "direction": "comparison",
+          "unit": "distribution difference",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Parameter search",
+          "Input-condition design",
+          "Controlled experiments",
+          "Independent reproduction"
+        ],
+        "zh": [
+          "参数搜索、输入条件设计、对照实验与复现。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Competing sensory inputs",
+              "zh": "竞争感觉输入"
+            },
+            {
+              "en": "Neural response comparison",
+              "zh": "神经响应比较"
+            },
+            {
+              "en": "Fixed choice readout",
+              "zh": "固定选择读出"
+            },
+            {
+              "en": "Predeclared rule scoring",
+              "zh": "预定义规则评分"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Strength comparison",
+              "zh": "强弱比较"
+            },
+            {
+              "en": "Conflicting cues",
+              "zh": "冲突信号"
+            },
+            {
+              "en": "Sequential stimuli",
+              "zh": "先后刺激"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "Connectome-constrained response modeling",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/39358519/",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "external"
+        }
+      ]
+    },
+    {
+      "id": "FBW-P04",
+      "slug": "visual-target-tracking",
+      "displayOrder": 4,
+      "title": {
+        "en": "Visual Motion and Target Tracking",
+        "zh": "视觉运动识别与目标跟随"
+      },
+      "shortDescription": {
+        "en": "Connect visual motion processing to neural control for direction detection and continuous target following.",
+        "zh": "连接视觉运动信号与神经控制，研究虚拟果蝇对移动目标的方向判断和连续跟随。"
+      },
+      "thumbnail": {
+        "path": "projects/visual-target-tracking.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Visual Motion and Target Tracking",
+          "zh": "任务概念示意：视觉运动识别与目标跟随"
+        }
+      },
+      "overview": {
+        "en": "Establish motion-direction recognition before connecting the readout to steering and continuous tracking. Evaluation will vary target speed, contrast, background interference and occlusion. Input mapping and circuit structure must be justified rather than replaced with hidden access to target coordinates.",
+        "zh": "先验证运动方向识别，再把读出结果接入转向和跟随。逐步加入速度变化、对比度变化、背景干扰与短暂遮挡。连接结构、输入映射和参数优化共同构成技术路线。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Improve stable direction recognition.",
+          "Reduce tracking angle error and target loss.",
+          "Reduce reacquisition time after an occlusion."
+        ],
+        "zh": [
+          "提高方向判断稳定性；降低跟随误差和目标丢失率；缩短遮挡结束后的重捕获时间。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "Build simplified visual stimuli and spatiotemporal encoding, verify the relation between visual cell types and input positions, and read downstream responses. Evaluate the visual readout and behavioral controller separately before assessing them together. Ground-truth screen coordinates are evaluator inputs, not a substitute for neural visual recognition.",
+        "zh": "构建简化视觉刺激与时空编码，核实视路细胞类型和输入位置的对应关系，读取下游响应。先分别评测视觉读出与行为控制，再进行组合评测。不能把屏幕目标的真实坐标直接送给动作层后声称完成了神经视觉识别。"
+      },
+      "currentFoundation": {
+        "en": "The connectome and general simulation form a foundation. Visual encoding and tracking-specific readouts still need development and evidence.",
+        "zh": "具备连接组与通用仿真基础；尚需视觉输入和读出专项建设。下一里程碑为“建立运动方向识别基准”。"
+      },
+      "nextMilestone": {
+        "en": "Establish a motion-direction recognition benchmark",
+        "zh": "建立运动方向识别基准"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Establish a motion-direction recognition benchmark",
+            "zh": "建立运动方向识别基准"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "Motion-direction readout configurations.",
+          "Versioned tracking-control configurations.",
+          "Speed and occlusion evaluation sets with reproduction reports."
+        ],
+        "zh": [
+          "方向识别配置、跟随控制配置、含速度/遮挡变化的评测集与复现报告。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Direction accuracy",
+            "zh": "方向识别准确率"
+          },
+          "definition": {
+            "en": "Fraction of held-out stimuli with the correct direction readout.",
+            "zh": "留出刺激中方向读出正确的比例。"
+          },
+          "direction": "higher",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Tracking angle error",
+            "zh": "跟随角误差"
+          },
+          "definition": {
+            "en": "Angular difference between desired and realized tracking direction.",
+            "zh": "期望与实际跟随方向之间的角度差。"
+          },
+          "direction": "lower",
+          "unit": "degrees",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "Target loss",
+            "zh": "目标丢失率"
+          },
+          "definition": {
+            "en": "Fraction of the evaluation interval outside the tracking criterion.",
+            "zh": "评测时间内不满足跟随判据的比例。"
+          },
+          "direction": "lower",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Reacquisition time",
+            "zh": "重捕获时间"
+          },
+          "definition": {
+            "en": "Model time needed to recover tracking after occlusion.",
+            "zh": "遮挡结束后恢复跟随所需的模型时间。"
+          },
+          "direction": "lower",
+          "unit": "model time",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Visual stimulus construction",
+          "Parameter optimization",
+          "Batch evaluation",
+          "Control-interface development"
+        ],
+        "zh": [
+          "视觉样本构建、参数优化、批量评测和控制接口开发。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Visual motion encoding",
+              "zh": "视觉运动编码"
+            },
+            {
+              "en": "Mapped visual pathways",
+              "zh": "已映射视觉通路"
+            },
+            {
+              "en": "Direction and action readout",
+              "zh": "方向与动作读出"
+            },
+            {
+              "en": "Target and observer state",
+              "zh": "目标与观察者状态"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          },
+          "feedback": {
+            "en": "Action changes the next sensory observation",
+            "zh": "动作改变下一时刻感觉观测"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Changing speed",
+              "zh": "速度变化"
+            },
+            {
+              "en": "Background interference",
+              "zh": "背景干扰"
+            },
+            {
+              "en": "Brief occlusion",
+              "zh": "短暂遮挡"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "Connectome-constrained visual motion models",
+          "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11525180/",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "external"
+        }
+      ]
+    },
+    {
+      "id": "FBW-P05",
+      "slug": "rapid-threat-response",
+      "displayOrder": 5,
+      "title": {
+        "en": "Rapid Threat Detection and Escape",
+        "zh": "快速威胁识别与逃避反应"
+      },
+      "shortDescription": {
+        "en": "Investigate neural responses to rapidly approaching stimuli while balancing reaction time, missed threats, and false alarms.",
+        "zh": "研究神经回路对快速接近刺激的响应，在反应速度、漏判和误报之间寻找稳定配置。"
+      },
+      "thumbnail": {
+        "path": "projects/rapid-threat-response.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Rapid Threat Detection and Escape",
+          "zh": "任务概念示意：快速威胁识别与逃避反应"
+        }
+      },
+      "overview": {
+        "en": "Study brief threats separately from continuous navigation. Expanding visual outlines and approaching stimuli define controlled experiments. Initial work focuses on trigger timing and response direction before connecting a complete escape action.",
+        "zh": "聚焦短时间内发生的威胁，区别于持续导航。以视野扩张、快速接近等刺激建立实验，先研究触发时机与响应方向，再逐步加入完整动作。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Improve threat detection while reducing misses.",
+          "Limit false alarms on ordinary motion.",
+          "Reduce model-time reaction delay under fixed evaluation conditions."
+        ],
+        "zh": [
+          "提高威胁检出率，降低漏报和误报，缩短模型时间下的反应延迟，保持对普通移动刺激的合理响应。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "Define threat and non-threat samples, sensory encoding and an output rule. Search input mappings, response windows and thresholds under frozen conditions. Report detection and false alarms together. Model reaction time is distinct from browser or device execution time.",
+        "zh": "定义威胁与非威胁样本、输入编码和输出规则；搜索刺激映射、响应窗口与阈值，使用固定评测条件比较。区分模型反应时间和浏览器设备的执行时间。"
+      },
+      "currentFoundation": {
+        "en": "Short stimulation and response analysis can be reused. A dedicated threat/non-threat protocol and accepted behavioral responses remain to be established.",
+        "zh": "可复用短时刺激与响应分析。下一里程碑为“建立威胁/非威胁样本与反应评测协议”。"
+      },
+      "nextMilestone": {
+        "en": "Freeze threat samples and the response evaluation protocol",
+        "zh": "建立威胁/非威胁样本与反应评测协议"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Freeze threat samples and the response evaluation protocol",
+            "zh": "建立威胁/非威胁样本与反应评测协议"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "Versioned short-response configurations.",
+          "False-alarm and missed-threat reports.",
+          "Reaction-delay and circuit-intervention materials."
+        ],
+        "zh": [
+          "短时反应配置、误报/漏报报告、反应延迟及回路干预材料。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Detection rate",
+            "zh": "威胁检出率"
+          },
+          "definition": {
+            "en": "Fraction of threat trials that trigger the defined response.",
+            "zh": "威胁试次中触发规定响应的比例。"
+          },
+          "direction": "higher",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Miss rate",
+            "zh": "漏报率"
+          },
+          "definition": {
+            "en": "Fraction of threat trials without the required response.",
+            "zh": "威胁试次中未出现规定响应的比例。"
+          },
+          "direction": "lower",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "False alarms",
+            "zh": "误报率"
+          },
+          "definition": {
+            "en": "Fraction of non-threat trials with an escape trigger.",
+            "zh": "非威胁试次中触发逃避的比例。"
+          },
+          "direction": "lower",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Reaction delay",
+            "zh": "反应延迟"
+          },
+          "definition": {
+            "en": "Model time from stimulus onset to the accepted response.",
+            "zh": "刺激出现至符合判据响应之间的模型时间。"
+          },
+          "direction": "lower",
+          "unit": "model time",
+          "observedValue": null
+        },
+        {
+          "id": "metric-5",
+          "label": {
+            "en": "Escape direction consistency",
+            "zh": "逃避方向一致性"
+          },
+          "definition": {
+            "en": "Fraction of triggered actions oriented away from the predeclared threat sector; no-response trials are reported separately.",
+            "zh": "触发动作中朝向远离预定义威胁区域的比例；无反应试次单独报告。"
+          },
+          "direction": "higher",
+          "unit": "%",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Stimulus-condition sweeps",
+          "Threshold search",
+          "Controlled verification",
+          "Robustness evaluation"
+        ],
+        "zh": [
+          "刺激条件扫描、阈值搜索、对照验证与鲁棒性评测。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Approaching visual stimulus",
+              "zh": "快速接近视觉刺激"
+            },
+            {
+              "en": "Neural response window",
+              "zh": "神经响应时间窗"
+            },
+            {
+              "en": "Escape trigger and direction",
+              "zh": "逃避触发与方向"
+            },
+            {
+              "en": "Detection and delay scoring",
+              "zh": "检出与延迟评分"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Approaching threat",
+              "zh": "接近威胁"
+            },
+            {
+              "en": "Ordinary movement",
+              "zh": "普通移动"
+            },
+            {
+              "en": "Visual interference",
+              "zh": "视觉干扰"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "Looming stimuli and directed escape",
+          "url": "https://www.nature.com/articles/s41586-022-05562-8",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "external"
+        }
+      ]
+    },
+    {
+      "id": "FBW-P06",
+      "slug": "path-integration-homing",
+      "displayOrder": 6,
+      "title": {
+        "en": "Path Integration and Homing",
+        "zh": "路径积分与自主归巢"
+      },
+      "shortDescription": {
+        "en": "Explore how persistent neural state can integrate self-motion and estimate a homeward direction when landmarks are limited.",
+        "zh": "探索神经状态如何整合自身运动历史，在地标减少时估计返回起点的方向。"
+      },
+      "thumbnail": {
+        "path": "projects/path-integration-homing.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Path Integration and Homing",
+          "zh": "任务概念示意：路径积分与自主归巢"
+        }
+      },
+      "overview": {
+        "en": "Start with short-path heading estimation and study how rotation and translation signals accumulate in persistent neural state. Increase route length and noise gradually, recording drift and failure conditions rather than assuming spatial memory exists.",
+        "zh": "从短路径的朝向估计开始，研究转动与位移信息怎样随时间积累。逐步增加路线长度和感觉噪声，明确记录漂移与失败条件。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Reduce heading-estimation and homing endpoint errors.",
+          "Measure error growth with route length.",
+          "Compare landmark-present and landmark-absent conditions."
+        ],
+        "zh": [
+          "降低方向估计误差和归巢终点误差，评估误差随路径长度增长的变化，比较地标存在与缺失的情况。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "Feed angular velocity and speed into a state-preserving model and read a heading estimate or homing vector. Ground-truth position is available only to scoring. An environment-provided home vector cannot replace neural computation. Persistent-state execution requires its own versioned rules.",
+        "zh": "将角速度、速度等自身运动信号送入保持状态的模型，读取方向或归巢向量。外部真实位置只用于打分；不能由环境直接提供返回向量替代神经计算。需要版本化的持续状态运行规则。"
+      },
+      "currentFoundation": {
+        "en": "Structural data and simulation are reusable. Repeatedly reset short experiments do not establish path memory or persistent-state navigation.",
+        "zh": "可复用结构数据和仿真基础。下一里程碑为“持续状态与短路径朝向估计基准”。不得将当前反复重置的短实验说成已经具有路径记忆。"
+      },
+      "nextMilestone": {
+        "en": "Freeze persistent-state and short-path heading benchmarks",
+        "zh": "持续状态与短路径朝向估计基准"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Freeze persistent-state and short-path heading benchmarks",
+            "zh": "持续状态与短路径朝向估计基准"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "Heading-estimation and homing configurations.",
+          "Error measurements across route and noise conditions.",
+          "A persistent-state reproduction protocol."
+        ],
+        "zh": [
+          "朝向估计/归巢配置、不同路线和噪声下的误差评测。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Heading error",
+            "zh": "方向误差"
+          },
+          "definition": {
+            "en": "Angular difference between the readout and the evaluation heading.",
+            "zh": "读出与评测基准方向之间的角度差。"
+          },
+          "direction": "lower",
+          "unit": "degrees",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Homing endpoint error",
+            "zh": "归巢位置误差"
+          },
+          "definition": {
+            "en": "Distance between the final location and the home region.",
+            "zh": "最终位置与归巢区域之间的距离。"
+          },
+          "direction": "lower",
+          "unit": "environment distance",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "Route-length drift",
+            "zh": "路径增长漂移"
+          },
+          "definition": {
+            "en": "Compare error as the frozen route length changes.",
+            "zh": "比较冻结路径长度变化时的误差。"
+          },
+          "direction": "comparison",
+          "unit": "error by route length",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Landmark sensitivity",
+            "zh": "地标敏感度"
+          },
+          "definition": {
+            "en": "Compare matched trials with and without landmarks.",
+            "zh": "比较有无地标的匹配试次。"
+          },
+          "direction": "comparison",
+          "unit": "matched-condition difference",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Temporal parameter research",
+          "Long-trajectory evaluation",
+          "Error analysis",
+          "Independent reproduction"
+        ],
+        "zh": [
+          "时序参数研究、长轨迹评测、误差分析、复现。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Self-motion observations",
+              "zh": "自身运动观测"
+            },
+            {
+              "en": "Persistent neural state",
+              "zh": "持续神经状态"
+            },
+            {
+              "en": "Heading or homing readout",
+              "zh": "朝向或归巢读出"
+            },
+            {
+              "en": "Evaluator-only position",
+              "zh": "仅评测器持有位置"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          },
+          "feedback": {
+            "en": "Carry state across steps; position is evaluator-only",
+            "zh": "跨步保持状态；位置仅供评测"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Outbound route",
+              "zh": "出发路径"
+            },
+            {
+              "en": "Turn and integrate",
+              "zh": "转弯与积分"
+            },
+            {
+              "en": "Remove landmarks",
+              "zh": "移除地标"
+            },
+            {
+              "en": "Attempt homing",
+              "zh": "尝试归巢"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "Central-complex navigation circuits",
+          "url": "https://elifesciences.org/articles/66039",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "external"
+        }
+      ]
+    },
+    {
+      "id": "FBW-P07",
+      "slug": "reward-associative-learning",
+      "displayOrder": 7,
+      "title": {
+        "en": "Reward Association and Reversal Learning",
+        "zh": "奖励关联学习与选择更新"
+      },
+      "shortDescription": {
+        "en": "Investigate how a model learns stimulus–reward associations and updates its choices when reward contingencies reverse.",
+        "zh": "研究模型如何建立刺激与奖励的关联，并在奖励规则变化后更新选择。"
+      },
+      "thumbnail": {
+        "path": "projects/reward-associative-learning.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Reward Association and Reversal Learning",
+          "zh": "任务概念示意：奖励关联学习与选择更新"
+        }
+      },
+      "overview": {
+        "en": "Separate pre-training, association, retention and reward reversal. Learning requires a recorded parameter or plastic-state change; changing the presentation alone is not learning. Begin with simple associations and short retention before extending the time scale.",
+        "zh": "明确区分训练前、训练后与奖励反转三个阶段，展示真正的参数或可塑状态变化。先研究简单关联与短期保持，再讨论更长时间尺度。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Form a choice preference consistent with the reward rule.",
+          "Compare learning efficiency and retention.",
+          "Adapt when stimulus–reward associations are reversed."
+        ],
+        "zh": [
+          "形成与奖励规则相符的选择偏好；比较学习效率和保持效果；奖励关联交换后重新适应。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "Use an explicitly documented reward-modulated plastic connection or constrained readout learning rule. Freeze the training/evaluation split and learning parameters. The current frozen integer model does not directly provide this capability: the learning mechanism is an independent version and must preserve historical scientific identities.",
+        "zh": "采用明确记录的奖励调制可塑连接或受约束读出学习规则。固定训练/评测划分和学习参数。现有冻结整数模型不能直接提供这一能力；新增学习规则属于独立版本，不改变历史科学身份。"
+      },
+      "currentFoundation": {
+        "en": "Connectome and response computation are reusable. A learning mechanism and an association/reversal protocol must be selected and frozen before measured learning claims or curves can be published.",
+        "zh": "可复用连接组与响应基础。下一里程碑为“选择学习机制并冻结关联/反转评测协议”。没有真实训练前后记录时，不生成学习曲线。"
+      },
+      "nextMilestone": {
+        "en": "Select a learning mechanism and freeze association/reversal evaluation",
+        "zh": "选择学习机制并冻结关联/反转评测协议"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Select a learning mechanism and freeze association/reversal evaluation",
+            "zh": "选择学习机制并冻结关联/反转评测协议"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "Versioned learning configurations.",
+          "Association and reversal process records.",
+          "Independent evaluation and reproduction packages."
+        ],
+        "zh": [
+          "学习配置、训练和反转过程记录、独立评测与复现包。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Preference change",
+            "zh": "偏好变化"
+          },
+          "definition": {
+            "en": "Compare matched choice preferences before and after training.",
+            "zh": "比较训练前后的匹配选择偏好。"
+          },
+          "direction": "comparison",
+          "unit": "preference difference",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Learning trials",
+            "zh": "学习试次数"
+          },
+          "definition": {
+            "en": "Trials required to meet a criterion frozen before training.",
+            "zh": "达到训练前冻结判据所需的试次数。"
+          },
+          "direction": "lower",
+          "unit": "trials",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "Retention",
+            "zh": "保持效果"
+          },
+          "definition": {
+            "en": "Preference retained after the declared delay or interruption.",
+            "zh": "规定延迟或中断后保留的偏好。"
+          },
+          "direction": "higher",
+          "unit": "preference difference",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Reversal adaptation",
+            "zh": "反转适应速度"
+          },
+          "definition": {
+            "en": "Trials needed to adapt after reward associations reverse.",
+            "zh": "奖励关联反转后重新适应所需的试次数。"
+          },
+          "direction": "lower",
+          "unit": "trials",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Learning-rule implementation",
+          "Hyperparameter search",
+          "Multiple-seed experiments",
+          "Independent reproduction"
+        ],
+        "zh": [
+          "学习规则实现、超参数搜索、多种子实验和复现。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Stimulus and reward inputs",
+              "zh": "刺激与奖励输入"
+            },
+            {
+              "en": "Versioned learning mechanism",
+              "zh": "版本化学习机制"
+            },
+            {
+              "en": "Plasticity or readout update",
+              "zh": "可塑状态或读出更新"
+            },
+            {
+              "en": "Held-out reversal evaluation",
+              "zh": "留出反转评测"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          },
+          "feedback": {
+            "en": "Reward-modulated update uses the declared new learning version",
+            "zh": "奖励调制更新使用明确的新学习版本"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Before training",
+              "zh": "训练前"
+            },
+            {
+              "en": "Association training",
+              "zh": "关联训练"
+            },
+            {
+              "en": "Retention probe",
+              "zh": "保持测验"
+            },
+            {
+              "en": "Reward reversal",
+              "zh": "奖励反转"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "Mushroom-body association structure",
+          "url": "https://elifesciences.org/articles/62576",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "external"
+        }
+      ]
+    },
+    {
+      "id": "FBW-P08",
+      "slug": "hexapod-gait-recovery",
+      "displayOrder": 8,
+      "title": {
+        "en": "Hexapod Coordination and Recovery",
+        "zh": "六足步态协调与扰动恢复"
+      },
+      "shortDescription": {
+        "en": "Link neural control to a virtual body to study coordinated walking, steering, and recovery from perturbations.",
+        "zh": "将神经控制输出与虚拟身体连接，研究六足运动的协调、转向和扰动后的稳定恢复。"
+      },
+      "thumbnail": {
+        "path": "projects/hexapod-gait-recovery.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Hexapod Coordination and Recovery",
+          "zh": "任务概念示意：六足步态协调与扰动恢复"
+        }
+      },
+      "overview": {
+        "en": "This is a long-term embodied-control project. MaleCNS includes brain and ventral nerve cord data, while complete body control also needs dynamics, action interfaces, sensory feedback and validation. Establish stable planar walking before extending to steering and disturbances.",
+        "zh": "这是长期具身控制项目。MaleCNS 数据范围包含脑与腹神经索，但完整身体控制还需要身体动力学、动作接口、感觉反馈和验证。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Establish stable walking in a virtual body.",
+          "Evaluate speed changes and steering.",
+          "Measure recovery from small perturbations and simple terrain changes."
+        ],
+        "zh": [
+          "从平面稳定行走开始，逐步实现速度变化、转向、小扰动恢复及简单不平地面上的运动。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "Use layered control: brain-level output selects speed and turning, a declared lower-level rhythm or motor controller drives a six-legged body, and body feedback returns to the system. Public simulation components may be reused with explicit attribution of each control layer. An external preprogrammed gait must not be attributed entirely to the FBW neural model.",
+        "zh": "采用分层控制：脑级输出决定速度/转向，明确的底层节律或运动控制器驱动六足身体，身体反馈回到系统。初期可复用公开身体仿真框架的组件，必须说明 FBW 负责的层次；不能把外部预编程步态全部归因于 FBW 神经模型。后续再研究更细致回路约束。"
+      },
+      "currentFoundation": {
+        "en": "The CNS connectome is a reusable foundation. There is no accepted complete six-legged controller for this new project without its body and interface evidence.",
+        "zh": "可复用 CNS 连接组。下一里程碑为“选定身体模型并建立神经输出—运动接口”；当前没有证据时，不声称具备完整六足控制器。"
+      },
+      "nextMilestone": {
+        "en": "Select a body model and establish the neural-to-motor interface",
+        "zh": "选定身体模型并建立神经输出—运动接口"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Select a body model and establish the neural-to-motor interface",
+            "zh": "选定身体模型并建立神经输出—运动接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "Versioned body-control configurations.",
+          "Stability and perturbation-recovery evaluation.",
+          "Reproduction documentation for the body and control interface."
+        ],
+        "zh": [
+          "身体控制配置、稳定性与扰动恢复评测、身体模型和控制接口的复现说明。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Stable walking duration",
+            "zh": "稳定行走时间"
+          },
+          "definition": {
+            "en": "Model time satisfying the declared balance and motion criteria.",
+            "zh": "满足规定平衡与运动判据的模型时间。"
+          },
+          "direction": "higher",
+          "unit": "model time",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Fall fraction",
+            "zh": "跌倒比例"
+          },
+          "definition": {
+            "en": "Fraction of trials failing the declared body-stability criterion.",
+            "zh": "未通过规定身体稳定性判据的试次比例。"
+          },
+          "direction": "lower",
+          "unit": "%",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "Speed tracking error",
+            "zh": "速度跟踪误差"
+          },
+          "definition": {
+            "en": "Difference between requested and realized body speed.",
+            "zh": "请求速度与实际身体速度之间的差。"
+          },
+          "direction": "lower",
+          "unit": "environment speed",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Recovery time",
+            "zh": "扰动恢复时间"
+          },
+          "definition": {
+            "en": "Model time from a defined disturbance to recovered stability.",
+            "zh": "规定扰动出现至恢复稳定之间的模型时间。"
+          },
+          "direction": "lower",
+          "unit": "model time",
+          "observedValue": null
+        },
+        {
+          "id": "metric-5",
+          "label": {
+            "en": "Control smoothness",
+            "zh": "控制平滑度"
+          },
+          "definition": {
+            "en": "Change in commanded joint or motor action between consecutive model steps, with stability assessed separately.",
+            "zh": "相邻模型步中关节或运动指令的变化量，与稳定性分别评估。"
+          },
+          "direction": "lower",
+          "unit": "action units / model step",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Simulation development",
+          "Control parameter optimization",
+          "Batch body-task evaluation",
+          "Independent reproduction"
+        ],
+        "zh": [
+          "仿真开发、控制参数优化、批量身体任务评测和复现；硬件要求待执行器实测确定。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Brain-level speed and turn",
+              "zh": "脑级速度与转向"
+            },
+            {
+              "en": "Declared motor controller",
+              "zh": "明确的底层运动控制"
+            },
+            {
+              "en": "Virtual six-legged body",
+              "zh": "虚拟六足身体"
+            },
+            {
+              "en": "Body and sensory feedback",
+              "zh": "身体与感觉反馈"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          },
+          "feedback": {
+            "en": "Body feedback closes the proposed control loop",
+            "zh": "身体反馈闭合拟建控制环路"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Planar walking",
+              "zh": "平面行走"
+            },
+            {
+              "en": "Steering",
+              "zh": "转向"
+            },
+            {
+              "en": "Small perturbation",
+              "zh": "小扰动"
+            },
+            {
+              "en": "Terrain changes",
+              "zh": "地形变化"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "NeuroMechFly v2",
+          "url": "https://www.nature.com/articles/s41592-024-02497-y",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "external"
+        }
+      ]
+    },
+    {
+      "id": "FBW-P09",
+      "slug": "targeted-neural-stimulation",
+      "displayOrder": 9,
+      "title": {
+        "en": "Targeted Stimulation and Response Atlas",
+        "zh": "精准神经刺激与功能响应图谱"
+      },
+      "shortDescription": {
+        "en": "Search for stable, selective stimulation configurations and organize reproducible input–response evidence into a reusable model response atlas.",
+        "zh": "搜索更稳定、更有选择性的刺激配置，将可复现的输入—响应证据整理成可复用的模型功能图谱。"
+      },
+      "thumbnail": {
+        "path": "projects/targeted-neural-stimulation.svg",
+        "width": 320,
+        "height": 200,
+        "alt": {
+          "en": "Concept schematic: Targeted Stimulation and Response Atlas",
+          "zh": "任务概念示意：精准神经刺激与功能响应图谱"
+        }
+      },
+      "overview": {
+        "en": "Build on the existing stimulation and reproduction workflow to search for stable, selective model responses. Organize complete input–response evidence into a reusable atlas that can support candidate foundations for other projects without converting it into behavioral proof.",
+        "zh": "这是与现有挖矿任务最直接衔接的方向。围绕指定目标群、背景和合法刺激范围进行搜索，保存完整证据与可复现材料，作为其他应用的候选基础。"
+      },
+      "whyItMatters": {
+        "en": "This project connects a defined neural-computation question to a reproducible evaluation protocol and a community participation pathway. Results will be interpreted only within their recorded model, task and evidence scope.",
+        "zh": "本项目将明确的神经计算问题、可复现评测协议与社区参与路径相结合。后续成果按记录的模型、任务与证据范围解释。"
+      },
+      "trainingGoals": {
+        "en": [
+          "Increase the declared target response.",
+          "Constrain changes within the declared non-target scope.",
+          "Compare robustness across backgrounds and model stimulus cost."
+        ],
+        "zh": [
+          "提高规定目标响应；限制已声明范围内的非目标变化；分析跨背景稳定性；比较模型刺激成本。"
+        ]
+      },
+      "technicalApproach": {
+        "en": "Reuse single-site stimulation, complete A/B event evaluation, result identities and reproduction materials. Record input location, timing, strength, target groups, non-target scope and backgrounds. Multi-site or complex temporal stimulation requires a separate protocol version and is not silently added to the existing protocol.",
+        "zh": "利用现有单点刺激、A/B 完整事件评价、结果身份与复现链路。记录输入位置、时序、强度、目标群、非目标范围及背景条件。后续多点/复杂时序任务需要新版本，不自动纳入现有协议。"
+      },
+      "currentFoundation": {
+        "en": "Related protocols and public reproduction-package construction already provide a shared foundation. This new response-atlas directory still requires its own organization and acceptance.",
+        "zh": "已有相关协议与公开复现包构建基础。下一里程碑为“整理可公开响应记录，建立模型内功能图谱目录”。共享基础已存在不代表此新目录已经建设完成。"
+      },
+      "nextMilestone": {
+        "en": "Organize public response records into a model response atlas",
+        "zh": "整理可公开响应记录，建立模型内功能图谱目录"
+      },
+      "milestones": [
+        {
+          "id": "protocol",
+          "title": {
+            "en": "Organize public response records into a model response atlas",
+            "zh": "整理可公开响应记录，建立模型内功能图谱目录"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "implementation",
+          "title": {
+            "en": "Implement the versioned task and measurement interface",
+            "zh": "实现版本化任务与测量接口"
+          },
+          "status": "planned"
+        },
+        {
+          "id": "evaluation",
+          "title": {
+            "en": "Evaluate frozen conditions and independent reproduction",
+            "zh": "完成冻结条件评测与独立复现"
+          },
+          "status": "planned"
+        }
+      ],
+      "expectedDeliverables": {
+        "en": [
+          "Versioned stimulation configurations.",
+          "A response atlas with background and scope manifests.",
+          "Complete reproduction and evaluation materials."
+        ],
+        "zh": [
+          "刺激配置、响应图谱、背景条件说明与完整复现材料。"
+        ]
+      },
+      "evaluationMetrics": [
+        {
+          "id": "metric-1",
+          "label": {
+            "en": "Net target response",
+            "zh": "目标净响应"
+          },
+          "definition": {
+            "en": "Difference between matched B and A target readouts.",
+            "zh": "匹配条件下 B 与 A 的目标读出差。"
+          },
+          "direction": "higher",
+          "unit": "registered response units",
+          "observedValue": null
+        },
+        {
+          "id": "metric-2",
+          "label": {
+            "en": "Selectivity",
+            "zh": "选择性"
+          },
+          "definition": {
+            "en": "Target response relative to the declared non-target comparison.",
+            "zh": "相对已声明非目标比较范围的目标响应。"
+          },
+          "direction": "higher",
+          "unit": "registered evaluator units",
+          "observedValue": null
+        },
+        {
+          "id": "metric-3",
+          "label": {
+            "en": "Background robustness",
+            "zh": "背景稳健性"
+          },
+          "definition": {
+            "en": "Variation across the required frozen background conditions.",
+            "zh": "必需冻结背景条件之间的响应变化。"
+          },
+          "direction": "comparison",
+          "unit": "response by background",
+          "observedValue": null
+        },
+        {
+          "id": "metric-4",
+          "label": {
+            "en": "Model stimulus cost",
+            "zh": "模型刺激成本"
+          },
+          "definition": {
+            "en": "Declared stimulation budget consumed by the model protocol; this is not measured physical energy use.",
+            "zh": "模型协议消耗的已定义刺激预算，不代表实测物理能耗。"
+          },
+          "direction": "comparison",
+          "unit": "model stimulus units",
+          "observedValue": null
+        },
+        {
+          "id": "metric-5",
+          "label": {
+            "en": "Scoped non-target change",
+            "zh": "规定范围非目标变化"
+          },
+          "definition": {
+            "en": "Report paired response changes only in the declared non-target populations and windows; sampled scope does not establish whole-brain side-effect control.",
+            "zh": "仅报告规定非目标群及时间窗中的配对响应变化；局部采样范围不代表全脑副作用控制。"
+          },
+          "direction": "comparison",
+          "unit": "declared response units",
+          "observedValue": null
+        }
+      ],
+      "participationRoles": {
+        "en": [
+          "Stimulation search",
+          "Background evaluation",
+          "Independent reproduction",
+          "Data organization and annotation"
+        ],
+        "zh": [
+          "刺激搜索、背景评测、独立复现、数据整理和图谱标注。"
+        ]
+      },
+      "computeNotes": {
+        "en": "Device requirements and task schedules will be matched by the community after runnable profiles have been evaluated. Unknown specifications are welcome in the application.",
+        "zh": "可运行任务完成评测后，由社区匹配设备要求与执行安排；暂不确定的设备配置也可以提交申请。"
+      },
+      "status": "preparing",
+      "recruitmentStatus": "open",
+      "updatedAt": "2026-10-23",
+      "progressEvidence": [],
+      "publishedResults": [],
+      "diagramDefinitions": [
+        {
+          "id": "method",
+          "kind": "flow",
+          "title": {
+            "en": "Method schematic",
+            "zh": "技术方案示意"
+          },
+          "nodes": [
+            {
+              "en": "Control A and stimulus B",
+              "zh": "对照 A 与刺激 B"
+            },
+            {
+              "en": "Complete event evaluation",
+              "zh": "完整事件评价"
+            },
+            {
+              "en": "Target and non-target readouts",
+              "zh": "目标与非目标读出"
+            },
+            {
+              "en": "Versioned response evidence",
+              "zh": "版本化响应证据"
+            }
+          ],
+          "description": {
+            "en": "A proposed project interface. Arrows describe information flow, not measured neural connections or a running training batch.",
+            "zh": "本项目拟建设的接口；箭头表示信息流，不代表实测神经连接或正在运行的训练批次。"
+          }
+        },
+        {
+          "id": "evaluation",
+          "kind": "conditions",
+          "title": {
+            "en": "Evaluation design",
+            "zh": "评测设计"
+          },
+          "conditions": [
+            {
+              "en": "Matched control A",
+              "zh": "匹配对照 A"
+            },
+            {
+              "en": "Single-site stimulus B",
+              "zh": "单点刺激 B"
+            },
+            {
+              "en": "Scoped atlas record",
+              "zh": "有范围的图谱记录"
+            }
+          ],
+          "description": {
+            "en": "Planned conditions for the project benchmark. These illustrations are protocol designs, not recorded performance.",
+            "zh": "本项目基准拟采用的条件。图示属于协议设计，不是已测得的性能。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "title": "FBW model and scientific scope",
+          "url": "https://flybrain.work/docs/model/",
+          "purpose": "Model scope",
+          "source": "project"
+        },
+        {
+          "title": "FBW scientific methods",
+          "url": "https://flybrain.work/methods/",
+          "purpose": "Technical background; not a claim of implemented equivalence",
+          "source": "project"
+        }
+      ]
+    }
+  ]
+}

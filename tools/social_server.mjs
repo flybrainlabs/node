@@ -8,7 +8,7 @@ import {SocialCommunityService} from './social_community.mjs';
 import {loadGitHubConfig,githubCookie,clearFlowCookie} from './social_github.mjs';
 
 const fail=(code,status=400)=>Object.assign(new Error(code),{code,status});
-const publicPaths=new Set(['/api/social/tasks','/api/social/leaderboard','/api/community/airdrop/allocation','/api/community/rules','/api/social/health']);
+const publicPaths=new Set(['/api/social/tasks','/api/social/leaderboard','/api/community/airdrop/allocation','/api/community/rules','/api/social/health','/api/community/projects/stats']);
 const adminActions={
   'tasks/update':'updateTask','points/adjust':'adjustPoints','users/review-status':'reviewStatus','x/review':'manualReview','x/reject':'rejectReview',
   'snapshots/supersede':'supersedeSnapshot','snapshots/create':'createSnapshot','snapshots/approve':'approveSnapshot',
@@ -42,6 +42,29 @@ export function serveSocial(service,{host='127.0.0.1',port=8791}={}){
       let session=null;if(!publicView||req.headers.authorization)session=service.auth.authenticate(origin,req.headers,mutation);
       let body={};if(mutation){if(req.headers['content-type']?.split(';')[0]!=='application/json')throw fail('content_type_required',415);const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>32768)throw fail('body_limit',413);chunks.push(chunk);}try{body=JSON.parse(Buffer.concat(chunks).toString());}catch{throw fail('invalid_json');}if(!body||Array.isArray(body)||typeof body!=='object')throw fail('invalid_request');}
       let result;
+      if(path.startsWith('/api/community/projects/')){
+        const prefix='/api/community/projects/',route=path.slice(prefix.length),query=Object.fromEntries(url.searchParams);
+        const application=route.match(/^applications\/([a-f0-9]{32})\/(update|withdraw|resubmit)$/);
+        const review=route.match(/^admin\/applications\/([a-f0-9]{32})\/review$/);
+        const detail=route.match(/^admin\/applications\/([a-f0-9]{32})$/);
+        if(route==='stats'&&!mutation)result=service.projects.stats();
+        else if(route==='me'&&!mutation)result=service.projects.me(session);
+        else if(route==='interests'&&mutation)result=service.projects.interest(session,body);
+        else if(route==='preferences'&&mutation)result=service.projects.preference(session,body);
+        else if(route==='applications/submit'&&mutation)result=service.projects.submit(session,body);
+        else if(application&&mutation)result=service.projects.change(session,application[1],application[2],body);
+        else if(route==='admin/applications'&&!mutation)result=service.projects.adminList(session,query);
+        else if(detail&&!mutation)result=service.projects.adminDetail(session,detail[1],query);
+        else if(route==='admin/summary'&&!mutation)result=service.projects.adminSummary(session);
+        else if(review&&mutation)result=service.projects.review(session,review[1],body);
+        else if(route==='admin/export'&&!mutation){
+          const content=service.projects.exportCsv(session,query);
+          res.setHeader('Content-Type','text/csv; charset=utf-8');
+          res.setHeader('Content-Disposition','attachment; filename="fbw-project-applications.csv"');
+          res.end(content);return;
+        }else throw fail('not_found',404);
+        res.end(JSON.stringify(result));return;
+      }
       if(path==='/api/social/health'&&!mutation)result={project:'flybrainlabs',service:'community',schemaVersion:3,githubConfigured:service.github.configured,githubStarVerificationEnabled:service.github.starVerificationEnabled,githubEngagementRewardsEnabled:service.github.engagementEnabled,tokenExecutionEnabled:false};
       else if(path==='/api/social/tasks'&&!mutation)result=service.tasks(session);
       else if(path==='/api/social/profile'&&!mutation)result=service.profile(session);
