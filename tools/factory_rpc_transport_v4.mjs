@@ -1,6 +1,6 @@
 // One bounded upstream lane is shared by the public gateway and verifier.
 // Task progression has no minimum interval; this limits RPC resource pressure.
-export function factoryRpcTransportV4(endpoint,{transport=globalThis.fetch,gapMs=400,maxQueued=16,timeoutMs=15000}={}){
+export function factoryRpcTransportV4(endpoint,{transport=globalThis.fetch,gapMs=400,maxQueued=16,timeoutMs=15000,coalesceFresh=false}={}){
   if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>120000)throw new RangeError('Finite RPC timeout required');
   const cache=new Map(),pending=new Map();let tail=Promise.resolve(),queued=0,nextAt=0,cooldown=0;
   const reply=(text,status=200)=>new Response(text,{status,headers:{'Content-Type':'application/json'}});
@@ -9,9 +9,12 @@ export function factoryRpcTransportV4(endpoint,{transport=globalThis.fetch,gapMs
     if(String(url)!==endpoint)return transport(url,requestOptions);
     const request=JSON.parse(options.body),method=request.method,identity=method==='getGenesisHash',key=method+':'+JSON.stringify(request.params||[]);
     const ttl=identity?60000:method==='getMinimumBalanceForRentExemption'?60000:!factoryFresh&&['getAccountInfo','getBalance','getSlot','getBlockHeight','getBlockTime'].includes(method)?1000:0;
+    // Simultaneous finalized reads can share the same upstream operation.
+    // Fresh account reads are never served from a completed response cache.
+    const coalesce=ttl||coalesceFresh&&['getAccountInfo','getMultipleAccounts','getSlot','getBlockTime'].includes(method);
     const cached=cache.get(key),pack=value=>reply(JSON.stringify({...value,id:request.id}));
     if(ttl&&cached?.until>Date.now())return pack(cached.value);
-    if(ttl&&pending.has(key))return pack(await pending.get(key));
+    if(coalesce&&pending.has(key))return pack(await pending.get(key));
     if(queued>=maxQueued||Date.now()<cooldown)return reply(JSON.stringify({code:'RPC_BUSY'}),503);
     queued++;
     const operation=tail.catch(()=>{}).then(async()=>{
@@ -31,7 +34,7 @@ export function factoryRpcTransportV4(endpoint,{transport=globalThis.fetch,gapMs
       if(ttl&&!value.error&&value.result!==null){if(cache.size>=64)cache.delete(cache.keys().next().value);cache.set(key,{value,until:Date.now()+ttl});}
       if(method==='sendTransaction')cache.clear();return {status:200,value};
     }).catch(error=>{if(['TimeoutError','AbortError'].includes(error.name))return {status:503,text:JSON.stringify({code:'RPC_TIMEOUT'})};throw error;}).finally(()=>{queued--;});tail=operation;
-    if(ttl){const valuePromise=operation.then(r=>{if(r.status!==200)throw Object.assign(new Error('RPC temporarily unavailable'),{status:r.status});return r.value;});pending.set(key,valuePromise);valuePromise.finally(()=>{if(pending.get(key)===valuePromise)pending.delete(key);}).catch(()=>{});}
+    if(coalesce){const valuePromise=operation.then(r=>{if(r.status!==200)throw Object.assign(new Error('RPC temporarily unavailable'),{status:r.status});return r.value;});pending.set(key,valuePromise);valuePromise.finally(()=>{if(pending.get(key)===valuePromise)pending.delete(key);}).catch(()=>{});}
     const result=await operation;return result.status===200?pack(result.value):reply(result.text,result.status);
   };
 }

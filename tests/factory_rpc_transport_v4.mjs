@@ -15,4 +15,11 @@ let stalledCalls=0;
 const bounded=factoryRpcTransportV4(endpoint,{gapMs:0,timeoutMs:10,transport:async(_url,options)=>{stalledCalls++;if(stalledCalls===1)return new Promise((_ok,no)=>options.signal.addEventListener('abort',()=>no(options.signal.reason),{once:true}));const request=JSON.parse(options.body);return new Response(JSON.stringify({jsonrpc:'2.0',id:request.id,result:1}));}});
 const watchdog=setTimeout(()=>assert.fail('A stalled RPC blocked the shared lane'),1000);
 try{const stuck=bounded(endpoint,body('getBlockTime',12,[1])),following=bounded(endpoint,body('getBlockTime',13,[2]));assert.equal((await stuck).status,503);assert.equal((await following).status,200);}finally{clearTimeout(watchdog);}
-console.log(JSON.stringify({passed:true,groups:5,checks:['reads are invalidated by writes; signed sends are never cached','upstream 429 starts a shared finite cooldown','one upstream lane and a finite pending queue','wrong Devnet genesis fails closed','a stalled upstream expires and releases the following queued read'],chainTransactions:0}));
+let releaseFresh,freshCalls=0;const freshGate=new Promise(resolve=>releaseFresh=resolve);
+const fresh=factoryRpcTransportV4(endpoint,{gapMs:0,coalesceFresh:true,transport:async(_url,options)=>{freshCalls++;await freshGate;const request=JSON.parse(options.body);return new Response(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{version:freshCalls}}));}});
+const freshRead=id=>fresh(endpoint,{...body('getAccountInfo',id,['bond',{commitment:'finalized'}]),factoryFresh:true});
+const a=freshRead(20),b=freshRead(21);releaseFresh();const [ar,br]=await Promise.all([a,b]);
+assert.equal((await ar.json()).id,20);assert.equal((await br.json()).id,21);assert.equal(freshCalls,1,'concurrent bond reads share one finalized upstream operation');
+assert.equal((await(await freshRead(22)).json()).result.version,2,'a later admission reads the chain again rather than a completed response cache');
+await Promise.all([fresh(endpoint,body('sendTransaction',23)),fresh(endpoint,body('sendTransaction',24))]);assert.equal(freshCalls,4,'signed sends are never coalesced');
+console.log(JSON.stringify({passed:true,groups:6,checks:['reads are invalidated by writes; signed sends are never cached','upstream 429 starts a shared finite cooldown','one upstream lane and a finite pending queue','wrong Devnet genesis fails closed','a stalled upstream expires and releases the following queued read','concurrent fresh finalized reads coalesce by scope and later admissions read again'],chainTransactions:0}));

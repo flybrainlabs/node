@@ -13,6 +13,7 @@ import {verifyPoolCatalogV4} from '../web/factory-pool-v4.mjs';
 import {canonical,hash,validateGoal,validateInput} from '../web/target-protocol-v2.mjs';
 import {verifyFactorySubmission} from './factory_verifier_v4.mjs';
 import {getModelReadiness,nativeReply} from './candidate_verifier_v2.mjs';
+import {factoryRpcTransportV4} from './factory_rpc_transport_v4.mjs';
 
 const fail=code=>Object.assign(new Error(code),{code});
 const hex=bytes=>Buffer.from(bytes).toString('hex');
@@ -27,6 +28,7 @@ async function durableAdmission(path,value,initial=false){
 }
 export async function startValidatorRelayV4(config){
   const token=(await readFile(config.tokenFile,'utf8')).trim();
+  const upstreamRead=factoryRpcTransportV4(config.rpcUpstream,{gapMs:800,maxQueued:64,timeoutMs:15000,coalesceFresh:true});
   const allowed=new Set(['getGenesisHash','getAccountInfo','getMultipleAccounts','getSlot','getBlockTime']);
   const server=createServer(async(req,res)=>{try{
     if(!authenticated(req,token))return json(res,401,{code:'VALIDATOR_AUTH_REQUIRED'});
@@ -39,7 +41,7 @@ export async function startValidatorRelayV4(config){
     }
     if(req.method==='POST'&&url.pathname==='/rpc'){
       const packet=await jsonBody(req);if(Array.isArray(packet)||!allowed.has(packet.method)||packet.jsonrpc!=='2.0')return json(res,403,{code:'VALIDATOR_READ_ONLY_RPC'});
-      const upstream=await fetch(config.rpcUpstream,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(packet),signal:AbortSignal.timeout(30000)});
+      const upstream=await upstreamRead(config.rpcUpstream,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(packet),factoryFresh:true,signal:AbortSignal.timeout(45000)});
       const body=await upstream.text();if(body.length>8*1024*1024)throw fail('VALIDATOR_RPC_BOUND');res.writeHead(upstream.status,{'content-type':'application/json','cache-control':'no-store'});res.end(body);return;
     }
     json(res,404,{code:'VALIDATOR_ROUTE'});
